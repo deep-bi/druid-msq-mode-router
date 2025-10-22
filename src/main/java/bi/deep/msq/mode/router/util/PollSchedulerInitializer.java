@@ -15,16 +15,24 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package bi.deep.msq.mode.router.execution;
+package bi.deep.msq.mode.router.util;
 
-import bi.deep.msq.mode.router.config.TimeoutConfig;
-import java.net.URI;
-import javax.servlet.http.HttpServletRequest;
-import javax.ws.rs.core.Response;
-import org.apache.druid.query.Query;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicInteger;
 
-public interface QueryExecutor {
+public class PollSchedulerInitializer {
+    public static ScheduledExecutorService single(String prefix) {
+        return Executors.newSingleThreadScheduledExecutor(new ThreadFactory() {
+            final AtomicInteger id = new AtomicInteger(1);
 
-    Response execute(
-            URI base, Query<?> query, HttpServletRequest req, TimeoutConfig config, SubmissionMode submissionMode);
+            @Override
+            public Thread newThread(Runnable runnable) {
+                Thread thread = new Thread(runnable, prefix + id.getAndIncrement());
+                thread.setDaemon(true);
+                return thread;
+            }
+        });
+    }
 }

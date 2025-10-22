@@ -17,31 +17,19 @@
  */
 package bi.deep.msq.mode.router.execution;
 
-import com.google.common.collect.ImmutableMap;
-import java.util.Map;
-import java.util.Optional;
-import javax.annotation.Nullable;
-import org.joda.time.Duration;
+public enum SubmissionMode {
+    RETURN_IMMEDIATELY,
+    WAIT_FOR_COMPLETION;
 
-public class AsyncMode {
-    private final String defaultMode;
-
-    private final Map<String, Optional<Duration>> modes;
-
-    public AsyncMode(String defaultMode) {
-        this.defaultMode = defaultMode;
-
-        this.modes = ImmutableMap.<String, Optional<Duration>>builder()
-                .put("async", Optional.empty())
-                .put("sync", Optional.of(Duration.standardDays(1)))
-                .build();
-    }
-
-    public Optional<Duration> parse(@Nullable String mode) {
+    public static SubmissionMode fromString(String mode) {
         if (mode == null || mode.isEmpty()) {
-            return modes.get(defaultMode);
+            return WAIT_FOR_COMPLETION;
         }
-        return Optional.ofNullable(modes.get(mode))
-                .orElseThrow(() -> new IllegalArgumentException("Unknown mode: " + mode));
+        for (SubmissionMode result : values()) {
+            if (result.name().equalsIgnoreCase(mode)) {
+                return result;
+            }
+        }
+        throw new IllegalArgumentException("Unknown mode: " + mode);
     }
 }

@@ -17,12 +17,12 @@
  */
 package bi.deep.msq.mode.router.execution;
 
+import bi.deep.msq.mode.router.config.TimeoutConfig;
 import java.net.URI;
 import java.util.Map;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.core.Response;
 import org.apache.druid.query.BaseQuery;
-import org.joda.time.Duration;
 
 public class QueryDispatcher {
 
@@ -33,7 +33,12 @@ public class QueryDispatcher {
     }
 
     public Response dispatch(
-            ExecutionMode mode, URI base, BaseQuery<?> query, HttpServletRequest req, Duration patience) {
-        return executors.get(mode).execute(base, query, req, patience);
+            ExecutionMode mode,
+            URI base,
+            BaseQuery<?> query,
+            HttpServletRequest req,
+            TimeoutConfig config,
+            SubmissionMode submissionMode) {
+        return executors.get(mode).execute(base, query, req, config, submissionMode);
     }
 }

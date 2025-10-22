@@ -78,7 +78,7 @@ public class ExecutionModeSelector {
             }
         }
 
-        return (start == null ? null : new Interval(start, end));
+        return new Interval(start, end);
     }
 
     private static boolean exceedsBounds(Interval queryInterval, Interval timelineInterval) {

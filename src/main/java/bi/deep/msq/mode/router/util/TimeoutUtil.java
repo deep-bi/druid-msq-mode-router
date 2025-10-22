@@ -15,16 +15,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package bi.deep.msq.mode.router.config;
+package bi.deep.msq.mode.router.util;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import org.joda.time.Duration;
 
-public class DeepGatewayConfig {
+public final class TimeoutUtil {
 
-    @JsonProperty
-    private String defaultMode = "sync";
+    public static long deadlineNs(final Duration patience) {
+        return System.nanoTime() + patience.getMillis() * 1_000_000L;
+    }
 
-    public String getDefaultMode() {
-        return defaultMode;
+    public static long remainingMillis(final long deadlineNanos) throws TimeoutException {
+        long left = TimeUnit.NANOSECONDS.toMillis(deadlineNanos - System.nanoTime());
+        if (left <= 0) {
+            throw new TimeoutException("Deadline exceeded");
+        }
+        return left;
     }
 }

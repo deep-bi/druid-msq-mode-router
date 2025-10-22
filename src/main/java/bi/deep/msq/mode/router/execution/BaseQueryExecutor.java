@@ -17,6 +17,8 @@
  */
 package bi.deep.msq.mode.router.execution;
 
+import bi.deep.msq.mode.router.config.TimeoutConfig;
+import bi.deep.msq.mode.router.http.Headers;
 import bi.deep.msq.mode.router.http.HttpRequestRunner;
 import bi.deep.msq.mode.router.http.HttpResponseBuilder;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -27,11 +29,10 @@ import javax.ws.rs.core.Response;
 import org.apache.druid.java.util.http.client.HttpClient;
 import org.apache.druid.java.util.http.client.Request;
 import org.apache.druid.query.Query;
-import org.joda.time.Duration;
 
 public abstract class BaseQueryExecutor implements QueryExecutor {
-    private final ObjectMapper jsonMapper;
-    private final HttpClient httpClient;
+    protected final ObjectMapper jsonMapper;
+    protected final HttpClient httpClient;
 
     protected BaseQueryExecutor(ObjectMapper jsonMapper, HttpClient httpClient) {
         this.jsonMapper = jsonMapper;
@@ -39,16 +40,17 @@ public abstract class BaseQueryExecutor implements QueryExecutor {
     }
 
     @Override
-    public Response execute(URI base, Query<?> query, HttpServletRequest req, Duration patience) {
+    public Response execute(
+            URI base, Query<?> query, HttpServletRequest req, TimeoutConfig config, SubmissionMode submissionMode) {
         try {
             byte[] payload = jsonMapper.writeValueAsBytes(query);
-            Request request = buildRequest(base, payload, req);
-            return HttpRequestRunner.runRequest(request, patience, httpClient, query.getId());
+            Headers headers = Headers.snapshot(req);
+            Request request = buildRequest(base, payload, headers);
+            return HttpRequestRunner.runRequest(request, config, httpClient);
         } catch (IOException ex) {
             return HttpResponseBuilder.buildFailure(ex.getMessage(), 400);
         }
     }
 
-    protected abstract Request buildRequest(URI base, byte[] payload, HttpServletRequest httpRequest)
-            throws IOException;
+    protected abstract Request buildRequest(URI base, byte[] payload, Headers headers) throws IOException;
 }

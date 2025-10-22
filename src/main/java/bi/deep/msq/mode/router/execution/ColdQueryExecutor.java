@@ -17,8 +17,12 @@
  */
 package bi.deep.msq.mode.router.execution;
 
+import bi.deep.msq.mode.router.config.TimeoutConfig;
 import bi.deep.msq.mode.router.http.ApiPaths;
+import bi.deep.msq.mode.router.http.Headers;
 import bi.deep.msq.mode.router.http.HttpRequestFactory;
+import bi.deep.msq.mode.router.http.HttpRequestRunner;
+import bi.deep.msq.mode.router.http.HttpResponseBuilder;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.net.URI;
@@ -30,23 +34,34 @@ import javax.ws.rs.core.Response;
 import org.apache.druid.java.util.http.client.HttpClient;
 import org.apache.druid.java.util.http.client.Request;
 import org.apache.druid.query.Query;
-import org.joda.time.Duration;
 
 public class ColdQueryExecutor extends BaseQueryExecutor {
+
     public ColdQueryExecutor(ObjectMapper jsonMapper, HttpClient httpClient) {
         super(jsonMapper, httpClient);
     }
 
     @Override
-    public Response execute(URI base, Query<?> query, HttpServletRequest req, Duration patience) {
-        Query<?> enriched = enrichContext(query);
-        return super.execute(base, enriched, req, patience);
+    public Response execute(
+            URI base, Query<?> query, HttpServletRequest req, TimeoutConfig config, SubmissionMode submissionMode) {
+        Query<?> prepared = enrichContext(query);
+        if (submissionMode == SubmissionMode.WAIT_FOR_COMPLETION) {
+            try {
+                byte[] payload = jsonMapper.writeValueAsBytes(query);
+                Headers headers = Headers.snapshot(req);
+                Request request = buildRequest(base, payload, headers);
+                return HttpRequestRunner.runAndPoll(request, headers, httpClient, config, base, jsonMapper);
+            } catch (IOException ex) {
+                return HttpResponseBuilder.buildFailure(ex.getMessage(), 400);
+            }
+        }
+        return super.execute(base, prepared, req, config, submissionMode);
     }
 
     @Override
-    protected Request buildRequest(URI base, byte[] payload, HttpServletRequest httpRequest) throws IOException {
+    protected Request buildRequest(URI base, byte[] payload, Headers headers) throws IOException {
         URL url = base.resolve(ApiPaths.MSQ_QUERY + "/").toURL();
-        return HttpRequestFactory.buildInternalRequest(url, payload, httpRequest);
+        return HttpRequestFactory.buildInternalPost(url, payload, headers);
     }
 
     protected Query<?> enrichContext(Query<?> query) {

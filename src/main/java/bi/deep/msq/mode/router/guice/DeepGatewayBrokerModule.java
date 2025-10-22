@@ -17,7 +17,7 @@
  */
 package bi.deep.msq.mode.router.guice;
 
-import bi.deep.msq.mode.router.config.DeepGatewayConfig;
+import bi.deep.msq.mode.router.config.TimeoutConfig;
 import bi.deep.msq.mode.router.resource.DeepGatewayBrokerResource;
 import bi.deep.msq.mode.router.security.Authorizer;
 import com.fasterxml.jackson.databind.Module;
@@ -54,7 +54,7 @@ public class DeepGatewayBrokerModule implements DruidModule {
     @Override
     public void configure(Binder binder) {
 
-        JsonConfigProvider.bind(binder, NAMESPACE, DeepGatewayConfig.class);
+        JsonConfigProvider.bind(binder, NAMESPACE, TimeoutConfig.class);
 
         binder.bind(Authorizer.class).in(LazySingleton.class);
 

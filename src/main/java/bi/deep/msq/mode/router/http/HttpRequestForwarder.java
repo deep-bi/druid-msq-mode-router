@@ -43,7 +43,7 @@ public class HttpRequestForwarder {
         URI path = uriInfo.getBaseUri().relativize(uriInfo.getRequestUri());
         URI uri = address.resolve(path);
 
-        Request request = HttpRequestFactory.buildInternalRequest(uri.toURL(), body, req);
+        Request request = HttpRequestFactory.buildInternalPost(uri.toURL(), body, Headers.snapshot(req));
         ListenableFuture<BytesFullResponseHolder> future = httpClient.go(request, new BytesFullResponseHandler());
 
         return HttpResponseBuilder.buildResponseFromFuture(future);

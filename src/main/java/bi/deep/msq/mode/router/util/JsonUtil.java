@@ -15,27 +15,28 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package bi.deep.msq.mode.router.execution;
+package bi.deep.msq.mode.router.util;
 
-import bi.deep.msq.mode.router.http.ApiPaths;
-import bi.deep.msq.mode.router.http.Headers;
-import bi.deep.msq.mode.router.http.HttpRequestFactory;
+import com.fasterxml.jackson.core.JsonFactory;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.JsonToken;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
-import java.net.URI;
-import java.net.URL;
-import org.apache.druid.java.util.http.client.HttpClient;
-import org.apache.druid.java.util.http.client.Request;
 
-public class HotQueryExecutor extends BaseQueryExecutor {
+public final class JsonUtil {
 
-    public HotQueryExecutor(ObjectMapper jsonMapper, HttpClient httpClient) {
-        super(jsonMapper, httpClient);
-    }
-
-    @Override
-    protected Request buildRequest(URI base, byte[] payload, Headers headers) throws IOException {
-        URL url = base.resolve(ApiPaths.DRUID_V2 + "/").toURL();
-        return HttpRequestFactory.buildInternalPost(url, payload, headers);
+    public static String jsonStringField(final ObjectMapper mapper, final byte[] json, final String field)
+            throws IOException {
+        JsonFactory f = mapper.getFactory();
+        try (JsonParser p = f.createParser(json)) {
+            while (p.nextToken() != null) {
+                if (p.currentToken() == JsonToken.FIELD_NAME && field.equals(p.getCurrentName())) {
+                    p.nextToken();
+                    return p.getValueAsString(null);
+                }
+                p.skipChildren();
+            }
+            return null;
+        }
     }
 }

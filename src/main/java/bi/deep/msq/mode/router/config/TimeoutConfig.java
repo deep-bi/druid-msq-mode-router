@@ -15,16 +15,24 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package bi.deep.msq.mode.router.execution;
+package bi.deep.msq.mode.router.config;
 
-import bi.deep.msq.mode.router.config.TimeoutConfig;
-import java.net.URI;
-import javax.servlet.http.HttpServletRequest;
-import javax.ws.rs.core.Response;
-import org.apache.druid.query.Query;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import org.joda.time.Duration;
 
-public interface QueryExecutor {
+public class TimeoutConfig {
 
-    Response execute(
-            URI base, Query<?> query, HttpServletRequest req, TimeoutConfig config, SubmissionMode submissionMode);
+    @JsonProperty
+    private final long pollIntervalMillis = 10000;
+
+    @JsonProperty
+    private final Duration queryTimeout = Duration.standardDays(1);
+
+    public long getPollIntervalMillis() {
+        return pollIntervalMillis;
+    }
+
+    public Duration getQueryTimeout() {
+        return queryTimeout;
+    }
 }

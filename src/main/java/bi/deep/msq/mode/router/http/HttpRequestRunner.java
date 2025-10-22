@@ -17,7 +17,12 @@
  */
 package bi.deep.msq.mode.router.http;
 
-import com.google.common.util.concurrent.ListenableFuture;
+import bi.deep.msq.mode.router.config.TimeoutConfig;
+import bi.deep.msq.mode.router.util.JsonUtil;
+import bi.deep.msq.mode.router.util.TimeoutUtil;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.IOException;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -29,25 +34,71 @@ import org.apache.druid.java.util.http.client.HttpClient;
 import org.apache.druid.java.util.http.client.Request;
 import org.apache.druid.java.util.http.client.response.BytesFullResponseHandler;
 import org.apache.druid.java.util.http.client.response.BytesFullResponseHolder;
-import org.joda.time.Duration;
 
 public class HttpRequestRunner {
-
-    public static Response runRequest(
-            final Request request, @Nullable Duration patience, HttpClient httpClient, String queryId) {
-        ListenableFuture<BytesFullResponseHolder> future = httpClient.go(request, new BytesFullResponseHandler());
+    public static Response runRequest(final Request request, final TimeoutConfig config, final HttpClient httpClient) {
         try {
-            if (patience != null) {
-                BytesFullResponseHolder holder = future.get(patience.getMillis(), TimeUnit.MILLISECONDS);
-                return parse(holder);
-            }
-            return HttpResponseBuilder.buildInProgress(queryId);
-        } catch (InterruptedException | ExecutionException | TimeoutException e) {
-            throw new RuntimeException(e);
+            final BytesFullResponseHolder holder = httpClient
+                    .go(request, new BytesFullResponseHandler())
+                    .get(config.getQueryTimeout().getMillis(), TimeUnit.MILLISECONDS);
+            return parse(holder);
+        } catch (final InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return HttpResponseBuilder.buildFailure("Interrupted", 500);
+        } catch (final ExecutionException e) {
+            return HttpResponseBuilder.buildFailure(
+                    e.getCause() == null ? e.toString() : e.getCause().toString(), 500);
+        } catch (final TimeoutException e) {
+            return HttpResponseBuilder.buildFailure("Submit timeout", 504);
         }
     }
 
-    public static Response parse(@Nullable BytesFullResponseHolder result) {
+    public static Response runAndPoll(
+            final Request submit,
+            final Headers headers,
+            final HttpClient httpClient,
+            final TimeoutConfig config,
+            final URI base,
+            final ObjectMapper objectMapper) {
+        final long deadlineNanos = TimeoutUtil.deadlineNs(config.getQueryTimeout());
+        final String queryId;
+        try {
+            queryId = submitMsq(submit, httpClient, objectMapper, deadlineNanos);
+        } catch (final TimeoutException e) {
+            return HttpResponseBuilder.buildFailure("MSQ acceptance timeout", 504);
+        } catch (final InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return HttpResponseBuilder.buildFailure("Interrupted", 500);
+        } catch (final ExecutionException | IOException e) {
+            final Throwable c = (e instanceof ExecutionException) ? e.getCause() : e;
+            return HttpResponseBuilder.buildFailure(c == null ? e.toString() : c.toString(), 500);
+        }
+
+        return MsqCompletionPoller.waitForCompletion(
+                queryId, headers, httpClient, config.getPollIntervalMillis(), base, objectMapper, deadlineNanos);
+    }
+
+    public static String submitMsq(
+            final Request submit, final HttpClient http, final ObjectMapper objectMapper, final long deadlineNanos)
+            throws InterruptedException, ExecutionException, TimeoutException, IOException {
+        final BytesFullResponseHolder result = http.go(submit, new BytesFullResponseHandler())
+                .get(TimeoutUtil.remainingMillis(deadlineNanos), TimeUnit.MILLISECONDS);
+
+        if (result == null) {
+            throw new IOException("No response was provided");
+        }
+        if (result.getStatus().getCode() >= 300) {
+            throw new IOException(bytesToString(result.getContent()));
+        }
+
+        final String queryId = JsonUtil.jsonStringField(objectMapper, result.getContent(), "queryId");
+        if (queryId == null || queryId.isEmpty()) {
+            throw new IOException("MSQ submit: missing queryId");
+        }
+        return queryId;
+    }
+
+    public static Response parse(@Nullable final BytesFullResponseHolder result) {
         if (result == null) {
             return HttpResponseBuilder.buildFailure("No response was provided", 400);
         } else if (result.getStatus().getCode() < 300) {
@@ -57,7 +108,11 @@ public class HttpRequestRunner {
                     "Empty response received, something went wrong",
                     result.getStatus().getCode());
         } else {
-            return HttpResponseBuilder.buildFailure(new String(result.getContent(), StandardCharsets.UTF_8), 400);
+            return HttpResponseBuilder.buildFailure(bytesToString(result.getContent()), 400);
         }
+    }
+
+    private static String bytesToString(final byte[] b) {
+        return (b == null || b.length == 0) ? "" : new String(b, StandardCharsets.UTF_8);
     }
 }

@@ -17,14 +17,14 @@
  */
 package bi.deep.msq.mode.router.resource;
 
-import bi.deep.msq.mode.router.config.DeepGatewayConfig;
-import bi.deep.msq.mode.router.execution.AsyncMode;
+import bi.deep.msq.mode.router.config.TimeoutConfig;
 import bi.deep.msq.mode.router.execution.ColdQueryExecutor;
 import bi.deep.msq.mode.router.execution.ExecutionMode;
 import bi.deep.msq.mode.router.execution.ExecutionModeSelector;
 import bi.deep.msq.mode.router.execution.HotQueryExecutor;
 import bi.deep.msq.mode.router.execution.QueryDispatcher;
 import bi.deep.msq.mode.router.execution.QueryExecutor;
+import bi.deep.msq.mode.router.execution.SubmissionMode;
 import bi.deep.msq.mode.router.http.ApiPaths;
 import bi.deep.msq.mode.router.http.HttpResponseBuilder;
 import bi.deep.msq.mode.router.security.Authorizer;
@@ -56,7 +56,6 @@ import org.apache.druid.query.DataSource;
 import org.apache.druid.server.DruidNode;
 import org.apache.druid.server.security.ForbiddenException;
 import org.apache.druid.timeline.VersionedIntervalTimeline;
-import org.joda.time.Duration;
 
 @LazySingleton
 @Path(ApiPaths.BASE)
@@ -67,8 +66,8 @@ public class DeepGatewayBrokerResource {
     private final Authorizer authorizer;
     private final ObjectMapper jsonMapper;
     private final BrokerServerView brokerServerView;
-    private final AsyncMode asyncMode;
     private final QueryDispatcher queryDispatcher;
+    private final TimeoutConfig timeoutConfig;
 
     @Inject
     public DeepGatewayBrokerResource(
@@ -77,16 +76,16 @@ public class DeepGatewayBrokerResource {
             @Json ObjectMapper jsonMapper,
             @EscalatedClient HttpClient httpClient,
             BrokerServerView brokerServerView,
-            DeepGatewayConfig config) {
+            TimeoutConfig timeoutConfig) {
         this.self = self;
         this.authorizer = authorizer;
         this.jsonMapper = jsonMapper;
         this.brokerServerView = brokerServerView;
-        this.asyncMode = new AsyncMode(config.getDefaultMode());
         Map<ExecutionMode, QueryExecutor> executors = new HashMap<>();
         executors.put(ExecutionMode.HOT, new HotQueryExecutor(jsonMapper, httpClient));
         executors.put(ExecutionMode.COLD, new ColdQueryExecutor(jsonMapper, httpClient));
         this.queryDispatcher = new QueryDispatcher(executors);
+        this.timeoutConfig = timeoutConfig;
     }
 
     @POST
@@ -106,14 +105,15 @@ public class DeepGatewayBrokerResource {
 
             ExecutionMode selectedMode = ExecutionModeSelector.select(query.getIntervals(), maybeTimeline.orElse(null));
 
-            // Not going to work for the msq just yet, as it's always returns the query id in response , adding a
-            // placeholder here
-            Optional<Duration> patience =
-                    selectedMode == ExecutionMode.COLD ? asyncMode.parse(mode) : Optional.of(Duration.standardDays(1));
+            // Hot queries always use sync mode
+            SubmissionMode submissionMode = selectedMode == ExecutionMode.COLD
+                    ? SubmissionMode.fromString(mode)
+                    : SubmissionMode.WAIT_FOR_COMPLETION;
 
             LOGGER.info("Query received: %s, selected mode: %s", query.getType(), selectedMode);
 
-            return queryDispatcher.dispatch(selectedMode, self.getUriToUse(), query, req, patience.orElse(null));
+            return queryDispatcher.dispatch(
+                    selectedMode, self.getUriToUse(), query, req, timeoutConfig, submissionMode);
         } catch (JsonProcessingException ex) {
             return HttpResponseBuilder.buildFailure("Invalid query JSON: " + ex.getOriginalMessage(), 400);
         } catch (ForbiddenException ex) {

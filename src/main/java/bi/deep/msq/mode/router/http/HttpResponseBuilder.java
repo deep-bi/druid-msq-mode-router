@@ -26,11 +26,11 @@ import org.apache.druid.java.util.http.client.response.BytesFullResponseHolder;
 
 public class HttpResponseBuilder {
 
-    public static Response buildResult(byte[] content) {
+    public static Response buildResult(final byte[] content) {
         return Response.ok(content).type(MediaType.APPLICATION_JSON_TYPE).build();
     }
 
-    public static Response buildFailure(String message, int statusCode) {
+    public static Response buildFailure(final String message, int statusCode) {
         return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                 .entity(message)
                 .type(MediaType.TEXT_PLAIN_TYPE)
@@ -38,19 +38,13 @@ public class HttpResponseBuilder {
                 .build();
     }
 
-    public static Response buildInProgress(String queryId) {
-        String message = String.format("Query with id `%s` is in progress.", queryId);
-        return Response.status(Response.Status.ACCEPTED)
-                .entity(message)
-                .type(MediaType.TEXT_PLAIN_TYPE)
-                .build();
-    }
-
     public static Response buildResponseFromFuture(final ListenableFuture<BytesFullResponseHolder> future)
             throws ExecutionException, InterruptedException {
         BytesFullResponseHolder holder = future.get();
 
-        if (holder == null) return Response.status(500).build();
+        if (holder == null) {
+            return Response.status(500).build();
+        }
 
         Response.ResponseBuilder builder = Response.status(holder.getStatus().getCode());
         holder.getResponse().headers().forEach(h -> builder.header(h.getKey(), h.getValue()));

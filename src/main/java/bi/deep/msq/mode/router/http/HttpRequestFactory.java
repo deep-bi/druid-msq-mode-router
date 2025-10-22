@@ -18,22 +18,21 @@
 package bi.deep.msq.mode.router.http;
 
 import java.net.URL;
-import java.util.Collections;
-import javax.servlet.http.HttpServletRequest;
 import org.apache.druid.java.util.http.client.Request;
 import org.jboss.netty.handler.codec.http.HttpMethod;
 
 public class HttpRequestFactory {
 
-    public static Request buildInternalRequest(final URL url, final byte[] body, final HttpServletRequest req) {
+    public static Request buildInternalPost(URL url, byte[] body, Headers headers) {
         Request request = new Request(HttpMethod.POST, url).setContent("application/json", body);
-
-        Collections.list(req.getHeaderNames()).forEach(name -> {
-            if (!request.getHeaders().containsKey(name)) {
-                request.addHeaderValues(name, Collections.list(req.getHeaders(name)));
-            }
-        });
-
+        headers.applyTo(request);
         return request;
     }
+
+    public static Request buildInternalGet(URL url, Headers headers) {
+        Request request = new Request(HttpMethod.GET, url);
+        headers.applyTo(request);
+        return request;
+    }
+
 }
