@@ -35,4 +35,9 @@ public class HttpRequestFactory {
         return request;
     }
 
+    public static Request buildInternalDelete(URL url, Headers headers) {
+        Request request = new Request(HttpMethod.DELETE, url);
+        headers.applyTo(request);
+        return request;
+    }
 }

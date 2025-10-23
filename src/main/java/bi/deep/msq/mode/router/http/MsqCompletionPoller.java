@@ -17,10 +17,15 @@
  */
 package bi.deep.msq.mode.router.http;
 
+import bi.deep.msq.mode.router.execution.ResultsDecorationStrategy;
 import bi.deep.msq.mode.router.util.HttpPollUtil;
 import bi.deep.msq.mode.router.util.PollSchedulerInitializer;
+import bi.deep.msq.mode.router.util.ResultsDecorator;
 import bi.deep.msq.mode.router.util.TimeoutUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.charset.StandardCharsets;
+import java.util.Collections;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
@@ -28,11 +33,15 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import org.apache.druid.indexer.TaskState;
+import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.java.util.http.client.HttpClient;
 
 public class MsqCompletionPoller {
+
+    private static final Logger LOG = new Logger(MsqCompletionPoller.class);
 
     public static Response waitForCompletion(
             final String queryId,
@@ -41,7 +50,8 @@ public class MsqCompletionPoller {
             final long pollIntervalMillis,
             final java.net.URI base,
             final ObjectMapper mapper,
-            final long deadlineNanos) {
+            final long deadlineNanos,
+            final ResultsDecorationStrategy decorationStrategy) {
         ScheduledExecutorService scheduler = PollSchedulerInitializer.single("msq-poller-");
         CompletableFuture<Response> done = new CompletableFuture<>();
         AtomicBoolean closed = new AtomicBoolean(false);
@@ -51,7 +61,7 @@ public class MsqCompletionPoller {
             ScheduledFuture<?> timeout = scheduler.schedule(
                     () -> {
                         if (closed.compareAndSet(false, true)) {
-                            done.complete(HttpResponseBuilder.buildFailure("MSQ polling timeout", 504));
+                            done.complete(buildTimeoutCancelResponse(base, queryId, headers, http, mapper));
                         }
                     },
                     TimeoutUtil.remainingMillis(deadlineNanos),
@@ -70,11 +80,13 @@ public class MsqCompletionPoller {
                                 byte[] rows = HttpPollUtil.fetchResults(
                                         base, queryId, headers, http, TimeoutUtil.remainingMillis(deadlineNanos));
                                 if (closed.compareAndSet(false, true)) {
-                                    done.complete(HttpResponseBuilder.buildResult(rows));
+                                    done.complete(HttpResponseBuilder.buildResult(
+                                            ResultsDecorator.decorate(mapper, rows, decorationStrategy)));
                                 }
                             } else if (taskState == TaskState.FAILED) {
                                 if (closed.compareAndSet(false, true)) {
-                                    done.complete(HttpResponseBuilder.buildFailure("MSQ FAILED", 502));
+                                    done.complete(HttpResponseBuilder.buildFailure(
+                                            "MSQ failed, check the task logs for details", 502));
                                 }
                             }
                         } catch (TimeoutException ignore) {
@@ -91,21 +103,64 @@ public class MsqCompletionPoller {
                     pollIntervalMillis,
                     TimeUnit.MILLISECONDS);
 
-            Response r = done.get();
+            Response result = done.get();
             poll.cancel(true);
             timeout.cancel(true);
-            return r;
+            return result;
 
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return HttpResponseBuilder.buildFailure("Interrupted", 500);
         } catch (ExecutionException e) {
-            Throwable c = e.getCause();
-            return HttpResponseBuilder.buildFailure(c == null ? e.toString() : c.toString(), 500);
+            return HttpResponseBuilder.buildFailure(e.getMessage(), 500);
         } catch (TimeoutException e) { // remainingMillis may throw before scheduling
-            return HttpResponseBuilder.buildFailure("MSQ polling timeout", 504);
+            return buildTimeoutCancelResponse(base, queryId, headers, http, mapper);
         } finally {
             scheduler.shutdownNow();
+        }
+    }
+
+    private static Response buildTimeoutCancelResponse(
+            final java.net.URI base,
+            final String queryId,
+            final Headers headers,
+            final HttpClient http,
+            final com.fasterxml.jackson.databind.ObjectMapper mapper) {
+        LOG.warn("Polling timed out, cancelling query %s", queryId);
+        Object cancelBody = null;
+        try {
+            final byte[] payload = HttpPollUtil.cancelQuery(base, queryId, headers, http);
+            if (payload != null && payload.length > 0) {
+                try {
+                    cancelBody = mapper.readTree(payload);
+                } catch (Exception nonJson) {
+                    cancelBody = new String(payload, StandardCharsets.UTF_8);
+                }
+            }
+        } catch (Exception cancelError) {
+            cancelBody = Collections.singletonMap("errorMessage", cancelError.getMessage());
+        }
+
+        final Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("error", "Timeout exceeded");
+        body.put("action", "Cancelled by timeout");
+        if (cancelBody != null) {
+            body.put("cancelPayload", cancelBody);
+        }
+
+        try {
+            final byte[] entity = mapper.writeValueAsBytes(body);
+            return Response.status(504)
+                    .type(MediaType.APPLICATION_JSON_TYPE)
+                    .entity(entity)
+                    .build();
+        } catch (Exception e) {
+            final String fallback = "Timeout exceeded, cancelled by timeout"
+                    + (cancelBody == null ? "" : (" cancelPayload=" + cancelBody));
+            return Response.status(504)
+                    .type(MediaType.TEXT_PLAIN_TYPE)
+                    .entity(fallback)
+                    .build();
         }
     }
 }

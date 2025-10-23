@@ -17,7 +17,6 @@
  */
 package bi.deep.msq.mode.router.util;
 
-import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonToken;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -27,14 +26,16 @@ public final class JsonUtil {
 
     public static String jsonStringField(final ObjectMapper mapper, final byte[] json, final String field)
             throws IOException {
-        JsonFactory f = mapper.getFactory();
-        try (JsonParser p = f.createParser(json)) {
-            while (p.nextToken() != null) {
-                if (p.currentToken() == JsonToken.FIELD_NAME && field.equals(p.getCurrentName())) {
-                    p.nextToken();
-                    return p.getValueAsString(null);
+        if (mapper == null || json == null || field == null)
+            throw new IllegalArgumentException("mapper, json, and field must be non-null");
+
+        try (JsonParser parser = mapper.getFactory().createParser(json, 0, json.length)) {
+            for (JsonToken token = parser.nextToken(); token != null; token = parser.nextToken()) {
+                if (token == JsonToken.FIELD_NAME && field.equals(parser.getCurrentName())) {
+                    JsonToken value = parser.nextToken();
+                    if (value == JsonToken.VALUE_NULL) return null;
+                    return parser.getValueAsString(null);
                 }
-                p.skipChildren();
             }
             return null;
         }

@@ -17,6 +17,9 @@
  */
 package bi.deep.msq.mode.router.execution;
 
+import static org.apache.druid.query.Query.GROUP_BY;
+import static org.apache.druid.query.Query.SCAN;
+
 import bi.deep.msq.mode.router.config.TimeoutConfig;
 import bi.deep.msq.mode.router.http.ApiPaths;
 import bi.deep.msq.mode.router.http.Headers;
@@ -34,6 +37,7 @@ import javax.ws.rs.core.Response;
 import org.apache.druid.java.util.http.client.HttpClient;
 import org.apache.druid.java.util.http.client.Request;
 import org.apache.druid.query.Query;
+import org.apache.druid.query.scan.ScanQuery;
 
 public class ColdQueryExecutor extends BaseQueryExecutor {
 
@@ -47,10 +51,11 @@ public class ColdQueryExecutor extends BaseQueryExecutor {
         Query<?> prepared = enrichContext(query);
         if (submissionMode == SubmissionMode.WAIT_FOR_COMPLETION) {
             try {
-                byte[] payload = jsonMapper.writeValueAsBytes(query);
+                byte[] payload = jsonMapper.writeValueAsBytes(prepared);
                 Headers headers = Headers.snapshot(req);
                 Request request = buildRequest(base, payload, headers);
-                return HttpRequestRunner.runAndPoll(request, headers, httpClient, config, base, jsonMapper);
+                return HttpRequestRunner.runAndPoll(
+                        request, headers, httpClient, config, base, jsonMapper, decideResultsDecorationStrategy(query));
             } catch (IOException ex) {
                 return HttpResponseBuilder.buildFailure(ex.getMessage(), 400);
             }
@@ -76,5 +81,15 @@ public class ColdQueryExecutor extends BaseQueryExecutor {
             return query.withOverriddenContext(ctx);
         }
         return query;
+    }
+
+    private ResultsDecorationStrategy decideResultsDecorationStrategy(final Query<?> query) {
+        if (query.getType().equals(GROUP_BY)) {
+            return ResultsDecorationStrategy.GROUP_BY;
+        } else if (query.getType().equals(SCAN)
+                && !((ScanQuery) query).getTimeOrder().equals(ScanQuery.Order.NONE)) {
+            return ResultsDecorationStrategy.ORDERED_SCAN;
+        }
+        return ResultsDecorationStrategy.NONE;
     }
 }

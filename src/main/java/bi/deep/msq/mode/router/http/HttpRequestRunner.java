@@ -18,6 +18,7 @@
 package bi.deep.msq.mode.router.http;
 
 import bi.deep.msq.mode.router.config.TimeoutConfig;
+import bi.deep.msq.mode.router.execution.ResultsDecorationStrategy;
 import bi.deep.msq.mode.router.util.JsonUtil;
 import bi.deep.msq.mode.router.util.TimeoutUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -59,7 +60,8 @@ public class HttpRequestRunner {
             final HttpClient httpClient,
             final TimeoutConfig config,
             final URI base,
-            final ObjectMapper objectMapper) {
+            final ObjectMapper objectMapper,
+            final ResultsDecorationStrategy decorationStrategy) {
         final long deadlineNanos = TimeoutUtil.deadlineNs(config.getQueryTimeout());
         final String queryId;
         try {
@@ -75,7 +77,14 @@ public class HttpRequestRunner {
         }
 
         return MsqCompletionPoller.waitForCompletion(
-                queryId, headers, httpClient, config.getPollIntervalMillis(), base, objectMapper, deadlineNanos);
+                queryId,
+                headers,
+                httpClient,
+                config.getPollIntervalMillis(),
+                base,
+                objectMapper,
+                deadlineNanos,
+                decorationStrategy);
     }
 
     public static String submitMsq(

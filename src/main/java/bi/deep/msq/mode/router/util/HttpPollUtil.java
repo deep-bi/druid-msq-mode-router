@@ -34,6 +34,7 @@ import org.apache.druid.java.util.http.client.response.BytesFullResponseHandler;
 import org.apache.druid.java.util.http.client.response.BytesFullResponseHolder;
 
 public class HttpPollUtil {
+
     public static TaskState fetchState(
             final URI base,
             final String qid,
@@ -79,6 +80,22 @@ public class HttpPollUtil {
         }
         if (h.getStatus().getCode() >= 300) {
             throw new IOException("MSQ results " + h.getStatus().getCode());
+        }
+        return h.getContent();
+    }
+
+    public static byte[] cancelQuery(final URI base, final String qid, final Headers headers, final HttpClient http)
+            throws ExecutionException, InterruptedException, IOException, TimeoutException {
+        URL url = base.resolve(ApiPaths.MSQ_QUERY + "/" + qid).toURL();
+        Request delete = HttpRequestFactory.buildInternalDelete(url, headers);
+        BytesFullResponseHolder h =
+                http.go(delete, new BytesFullResponseHandler()).get(5000, TimeUnit.MILLISECONDS);
+        if (h == null) {
+            throw new IOException("Empty MSQ cancel response");
+        }
+        if (h.getStatus().getCode() >= 300) {
+            throw new IOException(
+                    "MSQ cancel failed with status: " + h.getStatus().getCode());
         }
         return h.getContent();
     }
