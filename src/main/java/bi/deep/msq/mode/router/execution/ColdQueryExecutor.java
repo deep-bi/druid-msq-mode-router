@@ -49,7 +49,7 @@ public class ColdQueryExecutor extends BaseQueryExecutor {
     public Response execute(
             URI base, Query<?> query, HttpServletRequest req, TimeoutConfig config, SubmissionMode submissionMode) {
         Query<?> prepared = enrichContext(query);
-        if (submissionMode == SubmissionMode.WAIT_FOR_COMPLETION) {
+        if (submissionMode == SubmissionMode.SYNC) {
             try {
                 byte[] payload = jsonMapper.writeValueAsBytes(prepared);
                 Headers headers = Headers.snapshot(req);

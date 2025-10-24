@@ -106,9 +106,8 @@ public class DeepGatewayBrokerResource {
             ExecutionMode selectedMode = ExecutionModeSelector.select(query.getIntervals(), maybeTimeline.orElse(null));
 
             // Hot queries always use sync mode
-            SubmissionMode submissionMode = selectedMode == ExecutionMode.COLD
-                    ? SubmissionMode.fromString(mode)
-                    : SubmissionMode.WAIT_FOR_COMPLETION;
+            SubmissionMode submissionMode =
+                    selectedMode == ExecutionMode.COLD ? SubmissionMode.fromString(mode) : SubmissionMode.SYNC;
 
             LOGGER.info("Query received: %s, selected mode: %s", query.getType(), selectedMode);
 

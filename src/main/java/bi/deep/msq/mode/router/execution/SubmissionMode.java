@@ -18,12 +18,12 @@
 package bi.deep.msq.mode.router.execution;
 
 public enum SubmissionMode {
-    RETURN_IMMEDIATELY,
-    WAIT_FOR_COMPLETION;
+    ASYNC,
+    SYNC;
 
     public static SubmissionMode fromString(String mode) {
         if (mode == null || mode.isEmpty()) {
-            return WAIT_FOR_COMPLETION;
+            return SYNC;
         }
         for (SubmissionMode result : values()) {
             if (result.name().equalsIgnoreCase(mode)) {
