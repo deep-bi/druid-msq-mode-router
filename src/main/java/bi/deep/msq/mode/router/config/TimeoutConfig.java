@@ -26,7 +26,7 @@ public class TimeoutConfig {
     private final long pollIntervalMillis = 10000;
 
     @JsonProperty
-    private final Duration queryTimeout = Duration.standardDays(1);
+    private final Duration queryTimeout = Duration.standardMinutes(15);
 
     public long getPollIntervalMillis() {
         return pollIntervalMillis;

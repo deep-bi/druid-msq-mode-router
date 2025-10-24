@@ -18,7 +18,7 @@ For more information about how to load an extension, see [Loading extensions](ht
 
 | Name                                    | Default | Description                                                                                                                             |
 |-----------------------------------------|---------|-----------------------------------------------------------------------------------------------------------------------------------------|
-| `druid.deep.gateway.queryTimeout`       | `PT24H` | Global request timeout, in ISO-8601 format, also caps total MSQ polling time in cold mode and is used for all internal request timeouts |
+| `druid.deep.gateway.queryTimeout`       | `PT15M` | Global request timeout, in ISO-8601 format, also caps total MSQ polling time in cold mode and is used for all internal request timeouts |
 | `druid.deep.gateway.pollIntervalMillis` | `10000` | Interval (ms) between MSQ task status polls when executing in a cold mode                                                               |
 
 ## Usage
