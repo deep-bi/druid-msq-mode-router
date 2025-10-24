@@ -50,7 +50,7 @@ public class HttpRequestRunner {
             return HttpResponseBuilder.buildFailure(
                     e.getCause() == null ? e.toString() : e.getCause().toString(), 500);
         } catch (final TimeoutException e) {
-            return HttpResponseBuilder.buildFailure("Submit timeout", 504);
+            return HttpResponseBuilder.buildFailure("Timeout on results retrieving", 504);
         }
     }
 

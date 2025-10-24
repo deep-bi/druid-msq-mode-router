@@ -79,9 +79,10 @@ public class MsqCompletionPoller {
                             if (taskState == TaskState.SUCCESS) {
                                 byte[] rows = HttpPollUtil.fetchResults(
                                         base, queryId, headers, http, TimeoutUtil.remainingMillis(deadlineNanos));
+                                final byte[] decorated = ResultsDecorator.decorate(mapper, rows, decorationStrategy);
+                                final Response response = HttpResponseBuilder.buildResult(decorated);
                                 if (closed.compareAndSet(false, true)) {
-                                    done.complete(HttpResponseBuilder.buildResult(
-                                            ResultsDecorator.decorate(mapper, rows, decorationStrategy)));
+                                    done.complete(response);
                                 }
                             } else if (taskState == TaskState.FAILED) {
                                 if (closed.compareAndSet(false, true)) {
