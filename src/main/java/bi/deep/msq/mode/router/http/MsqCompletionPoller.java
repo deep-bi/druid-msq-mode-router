@@ -21,7 +21,7 @@ import bi.deep.msq.mode.router.execution.ResultsDecorationStrategy;
 import bi.deep.msq.mode.router.util.HttpPollUtil;
 import bi.deep.msq.mode.router.util.PollSchedulerInitializer;
 import bi.deep.msq.mode.router.util.ResultsDecorator;
-import bi.deep.msq.mode.router.util.TimeoutUtil;
+import bi.deep.msq.mode.router.util.TimeUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
@@ -47,7 +47,7 @@ public class MsqCompletionPoller {
             final String queryId,
             final Headers headers,
             final HttpClient http,
-            final long pollIntervalMillis,
+            final long pollIntervalSeconds,
             final java.net.URI base,
             final ObjectMapper mapper,
             final long deadlineNanos,
@@ -56,16 +56,16 @@ public class MsqCompletionPoller {
         CompletableFuture<Response> done = new CompletableFuture<>();
         AtomicBoolean closed = new AtomicBoolean(false);
         AtomicBoolean inFlight = new AtomicBoolean(false);
-
+        final long pollIntervalMillis = TimeUtil.secondsToMillis(pollIntervalSeconds);
         try {
             ScheduledFuture<?> timeout = scheduler.schedule(
-                    () -> {
+                () -> {
                         if (closed.compareAndSet(false, true)) {
                             done.complete(buildTimeoutCancelResponse(base, queryId, headers, http, mapper));
                         }
                     },
-                    TimeoutUtil.remainingMillis(deadlineNanos),
-                    TimeUnit.MILLISECONDS);
+                TimeUtil.remainingMillis(deadlineNanos),
+                TimeUnit.MILLISECONDS);
 
             ScheduledFuture<?> poll = scheduler.scheduleWithFixedDelay(
                     () -> {
@@ -73,12 +73,12 @@ public class MsqCompletionPoller {
                             return;
                         }
                         try {
-                            long perCallMs = Math.min(TimeoutUtil.remainingMillis(deadlineNanos), pollIntervalMillis);
+                            long perCallMs = Math.min(TimeUtil.remainingMillis(deadlineNanos), pollIntervalMillis);
                             TaskState taskState =
                                     HttpPollUtil.fetchState(base, queryId, headers, http, perCallMs, mapper);
                             if (taskState == TaskState.SUCCESS) {
                                 byte[] rows = HttpPollUtil.fetchResults(
-                                        base, queryId, headers, http, TimeoutUtil.remainingMillis(deadlineNanos));
+                                    base, queryId, headers, http, TimeUtil.remainingMillis(deadlineNanos));
                                 final byte[] decorated = ResultsDecorator.decorate(mapper, rows, decorationStrategy);
                                 final Response response = HttpResponseBuilder.buildResult(decorated);
                                 if (closed.compareAndSet(false, true)) {
