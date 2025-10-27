@@ -23,13 +23,13 @@ import org.joda.time.Duration;
 public class TimeoutConfig {
 
     @JsonProperty
-    private final long pollIntervalMillis = 10000;
+    private final long pollIntervalSeconds = 10000;
 
     @JsonProperty
     private final Duration queryTimeout = Duration.standardMinutes(15);
 
-    public long getPollIntervalMillis() {
-        return pollIntervalMillis;
+    public long getPollIntervalSeconds() {
+        return pollIntervalSeconds;
     }
 
     public Duration getQueryTimeout() {

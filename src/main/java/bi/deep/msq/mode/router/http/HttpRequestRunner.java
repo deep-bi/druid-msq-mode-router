@@ -20,7 +20,7 @@ package bi.deep.msq.mode.router.http;
 import bi.deep.msq.mode.router.config.TimeoutConfig;
 import bi.deep.msq.mode.router.execution.ResultsDecorationStrategy;
 import bi.deep.msq.mode.router.util.JsonUtil;
-import bi.deep.msq.mode.router.util.TimeoutUtil;
+import bi.deep.msq.mode.router.util.TimeUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.net.URI;
@@ -62,7 +62,7 @@ public class HttpRequestRunner {
             final URI base,
             final ObjectMapper objectMapper,
             final ResultsDecorationStrategy decorationStrategy) {
-        final long deadlineNanos = TimeoutUtil.deadlineNs(config.getQueryTimeout());
+        final long deadlineNanos = TimeUtil.deadlineNs(config.getQueryTimeout());
         final String queryId;
         try {
             queryId = submitMsq(submit, httpClient, objectMapper, deadlineNanos);
@@ -80,7 +80,7 @@ public class HttpRequestRunner {
                 queryId,
                 headers,
                 httpClient,
-                config.getPollIntervalMillis(),
+                config.getPollIntervalSeconds(),
                 base,
                 objectMapper,
                 deadlineNanos,
@@ -91,7 +91,7 @@ public class HttpRequestRunner {
             final Request submit, final HttpClient http, final ObjectMapper objectMapper, final long deadlineNanos)
             throws InterruptedException, ExecutionException, TimeoutException, IOException {
         final BytesFullResponseHolder result = http.go(submit, new BytesFullResponseHandler())
-                .get(TimeoutUtil.remainingMillis(deadlineNanos), TimeUnit.MILLISECONDS);
+                .get(TimeUtil.remainingMillis(deadlineNanos), TimeUnit.MILLISECONDS);
 
         if (result == null) {
             throw new IOException("No response was provided");

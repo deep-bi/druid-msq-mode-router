@@ -146,7 +146,7 @@ class MsqCompletionPollerTest {
         final long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
 
         final Response r = MsqCompletionPoller.waitForCompletion(
-                "qrs", headers, http, 5L, BASE, MAPPER, deadlineNanos, ResultsDecorationStrategy.GROUP_BY);
+                "qrs", headers, http, 1, BASE, MAPPER, deadlineNanos, ResultsDecorationStrategy.GROUP_BY);
 
         assertEquals(200, r.getStatus());
         assertTrue(((byte[]) r.getEntity()).length > 0);
