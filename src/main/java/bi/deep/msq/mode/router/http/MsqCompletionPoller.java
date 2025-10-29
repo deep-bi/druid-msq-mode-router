@@ -59,13 +59,13 @@ public class MsqCompletionPoller {
         final long pollIntervalMillis = TimeUtil.secondsToMillis(pollIntervalSeconds);
         try {
             ScheduledFuture<?> timeout = scheduler.schedule(
-                () -> {
+                    () -> {
                         if (closed.compareAndSet(false, true)) {
                             done.complete(buildTimeoutCancelResponse(base, queryId, headers, http, mapper));
                         }
                     },
-                TimeUtil.remainingMillis(deadlineNanos),
-                TimeUnit.MILLISECONDS);
+                    TimeUtil.remainingMillis(deadlineNanos),
+                    TimeUnit.MILLISECONDS);
 
             ScheduledFuture<?> poll = scheduler.scheduleWithFixedDelay(
                     () -> {
@@ -78,7 +78,7 @@ public class MsqCompletionPoller {
                                     HttpPollUtil.fetchState(base, queryId, headers, http, perCallMs, mapper);
                             if (taskState == TaskState.SUCCESS) {
                                 byte[] rows = HttpPollUtil.fetchResults(
-                                    base, queryId, headers, http, TimeUtil.remainingMillis(deadlineNanos));
+                                        base, queryId, headers, http, TimeUtil.remainingMillis(deadlineNanos));
                                 final byte[] decorated = ResultsDecorator.decorate(mapper, rows, decorationStrategy);
                                 final Response response = HttpResponseBuilder.buildResult(decorated);
                                 if (closed.compareAndSet(false, true)) {

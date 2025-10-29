@@ -20,20 +20,15 @@ package bi.deep.msq.mode.router.execution;
 import static org.apache.druid.query.Query.GROUP_BY;
 import static org.apache.druid.query.Query.SCAN;
 
-import bi.deep.msq.mode.router.config.TimeoutConfig;
 import bi.deep.msq.mode.router.http.ApiPaths;
 import bi.deep.msq.mode.router.http.Headers;
 import bi.deep.msq.mode.router.http.HttpRequestFactory;
-import bi.deep.msq.mode.router.http.HttpRequestRunner;
-import bi.deep.msq.mode.router.http.HttpResponseBuilder;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URL;
 import java.util.HashMap;
 import java.util.Map;
-import javax.servlet.http.HttpServletRequest;
-import javax.ws.rs.core.Response;
 import org.apache.druid.java.util.http.client.HttpClient;
 import org.apache.druid.java.util.http.client.Request;
 import org.apache.druid.query.Query;
@@ -46,30 +41,13 @@ public class ColdQueryExecutor extends BaseQueryExecutor {
     }
 
     @Override
-    public Response execute(
-            URI base, Query<?> query, HttpServletRequest req, TimeoutConfig config, SubmissionMode submissionMode) {
-        Query<?> prepared = enrichContext(query);
-        if (submissionMode == SubmissionMode.SYNC) {
-            try {
-                byte[] payload = jsonMapper.writeValueAsBytes(prepared);
-                Headers headers = Headers.snapshot(req);
-                Request request = buildRequest(base, payload, headers);
-                return HttpRequestRunner.runAndPoll(
-                        request, headers, httpClient, config, base, jsonMapper, decideResultsDecorationStrategy(query));
-            } catch (IOException ex) {
-                return HttpResponseBuilder.buildFailure(ex.getMessage(), 400);
-            }
-        }
-        return super.execute(base, prepared, req, config, submissionMode);
-    }
-
-    @Override
     protected Request buildRequest(URI base, byte[] payload, Headers headers) throws IOException {
         URL url = base.resolve(ApiPaths.MSQ_QUERY + "/").toURL();
         return HttpRequestFactory.buildInternalPost(url, payload, headers);
     }
 
-    protected Query<?> enrichContext(Query<?> query) {
+    @Override
+    protected Query<?> prepareQuery(Query<?> query) {
         Map<String, Object> ctx;
         if (query.getContext() == null) {
             ctx = new HashMap<>();
@@ -83,7 +61,13 @@ public class ColdQueryExecutor extends BaseQueryExecutor {
         return query;
     }
 
-    private ResultsDecorationStrategy decideResultsDecorationStrategy(final Query<?> query) {
+    @Override
+    protected boolean shouldPoll(SubmissionMode submissionMode) {
+        return submissionMode == SubmissionMode.SYNC;
+    }
+
+    @Override
+    protected ResultsDecorationStrategy resultsDecorationStrategy(final Query<?> query) {
         if (query.getType().equals(GROUP_BY)) {
             return ResultsDecorationStrategy.GROUP_BY;
         } else if (query.getType().equals(SCAN)

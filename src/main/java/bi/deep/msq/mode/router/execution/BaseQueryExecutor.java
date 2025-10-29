@@ -43,13 +43,34 @@ public abstract class BaseQueryExecutor implements QueryExecutor {
     public Response execute(
             URI base, Query<?> query, HttpServletRequest req, TimeoutConfig config, SubmissionMode submissionMode) {
         try {
+            Query<?> prepared = prepareQuery(query);
+
             byte[] payload = jsonMapper.writeValueAsBytes(query);
             Headers headers = Headers.snapshot(req);
             Request request = buildRequest(base, payload, headers);
+
+            if (shouldPoll(submissionMode)) {
+                return HttpRequestRunner.runAndPoll(
+                        request, headers, httpClient, config, base, jsonMapper, resultsDecorationStrategy(prepared));
+            }
+
             return HttpRequestRunner.runRequest(request, config, httpClient);
+
         } catch (IOException ex) {
             return HttpResponseBuilder.buildFailure(ex.getMessage(), 400);
         }
+    }
+
+    protected Query<?> prepareQuery(Query<?> query) {
+        return query;
+    }
+
+    protected boolean shouldPoll(SubmissionMode submissionMode) {
+        return false;
+    }
+
+    protected ResultsDecorationStrategy resultsDecorationStrategy(Query<?> query) {
+        return ResultsDecorationStrategy.NONE;
     }
 
     protected abstract Request buildRequest(URI base, byte[] payload, Headers headers) throws IOException;

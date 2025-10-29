@@ -21,8 +21,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.joda.time.Duration;
 
-public final class TimeUtil
-{
+public final class TimeUtil {
 
     public static long deadlineNs(final Duration patience) {
         return System.nanoTime() + patience.getMillis() * 1_000_000L;
