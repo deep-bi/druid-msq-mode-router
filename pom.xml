@@ -11,7 +11,9 @@
 
   <groupId>bi.deep</groupId>
   <artifactId>druid-msq-mode-router</artifactId>
-  <version>1.0.0-SNAPSHOT</version>
+  <version>SNAPSHOT</version>
+  <name>Druid MSQ Mode Router Extension</name>
+  <description>Extension for Apache Druid allowing to automatically route queries to MSQ when targeting cold data</description>
   <organization>
     <name>Deep BI, Inc.</name>
     <url>https://www.deep.bi</url>
@@ -97,7 +99,7 @@
               <goal>single</goal>
             </goals>
             <configuration>
-              <finalName>${project.artifactId}-${project.version}-druid${druid.version}</finalName>
+              <finalName>${project.artifactId}-${druid.version}-${project.version}</finalName>
               <tarLongFileMode>posix</tarLongFileMode>
               <descriptors>
                 <descriptor>src/assembly/assembly.xml</descriptor>
@@ -126,7 +128,7 @@
             <addMavenDescriptor>false</addMavenDescriptor>
             <manifestEntries>
               <Implementation-Title>${project.artifactId}</Implementation-Title>
-              <Implementation-Version>${project.version}-druid${druid.version}</Implementation-Version>
+              <Implementation-Version>${druid.version}-${project.version}</Implementation-Version>
               <Implementation-Vendor>${project.organization.name}</Implementation-Vendor>
             </manifestEntries>
           </archive>
