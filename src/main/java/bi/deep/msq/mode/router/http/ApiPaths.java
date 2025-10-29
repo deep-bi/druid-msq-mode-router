@@ -17,7 +17,10 @@ package bi.deep.msq.mode.router.http;
 
 public class ApiPaths {
 
-    public static final String BASE = "/druid-ext/deep";
-    public static final String DRUID_V2 = "/druid/v2";
+    public static final String ROUTER_BASE = "/druid-ext/query-router";
+    public static final String DRUID_BASE = "/druid";
+    public static final String V2 = "/v2";
+    public static final String ROUTER_V2 = ROUTER_BASE + V2;
+    public static final String DRUID_V2 = DRUID_BASE + V2;
     public static final String MSQ_QUERY = DRUID_V2 + "/native/statements";
 }

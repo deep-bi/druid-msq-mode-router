@@ -23,7 +23,7 @@ For more information about how to load an extension, see [Loading extensions](ht
 
 ## Usage
 
-To run a query using the Deep MSQ Router, POST your query to the `/druid-ext/deep/druid/v2` endpoint to one of your Broker nodes or to the Router
+To run a query using the Deep MSQ Router, POST your query to the `/druid-ext/query-router/v2` endpoint to one of your Broker nodes or to the Router
 
 #### Routing:
 
@@ -41,7 +41,7 @@ _Sample request:_
 
 ```curl
 curl -X POST \
-  https://ROUTER:8888/druid-ext/deep/druid/v2 \
+  https://ROUTER:8888/druid-ext/query-router/v2 \
   -H 'Content-Type: application/json' \
   -d '{
     "queryType": "groupBy",
@@ -58,7 +58,7 @@ curl -X POST \
 _Sample Results:_
 * Native -> `[{"version":"v1","timestamp":"2025-09-20T00:00:00.000Z","event":{"sum_value":275.0,"rows":11}}]`
 * MSQ -> `[{"version":null,"timestamp":null,"event":{"sum_value":275.0,"rows":11}}]` // note: version and timestamp are null in MSQ results
-* MSQ with async mode enabled -> `{"queryId":"query-135761b6-ce99-4130-8c06-ca850a766669","state":"ACCEPTED","createdAt":"2025-10-24T11:41:44.290Z","schema":{"sum_value":"DOUBLE","rows":"LONG"},"durationMs":-1}` // POST to `https://ROUTER:8888/druid-ext/deep/druid/v2?mode=async`
+* MSQ with async mode enabled -> `{"queryId":"query-135761b6-ce99-4130-8c06-ca850a766669","state":"ACCEPTED","createdAt":"2025-10-24T11:41:44.290Z","schema":{"sum_value":"DOUBLE","rows":"LONG"},"durationMs":-1}` // POST to `https://ROUTER:8888/druid-ext/query-router/v2?mode=async`
 
 
 ## Known Limitations

@@ -40,7 +40,7 @@ import org.apache.druid.query.Query;
 import org.apache.druid.server.router.QueryHostFinder;
 
 @LazySingleton
-@Path(ApiPaths.BASE)
+@Path(ApiPaths.ROUTER_V2)
 public class DeepGatewayRouterResource {
     private final Authorizer authorizer;
     private final QueryHostFinder queryHostFinder;
@@ -60,7 +60,6 @@ public class DeepGatewayRouterResource {
     }
 
     @POST
-    @Path(ApiPaths.DRUID_V2)
     @Produces(MediaType.APPLICATION_JSON)
     @Consumes(MediaType.APPLICATION_JSON)
     public Response postQuery(byte[] body, @Context final HttpServletRequest req, @Context final UriInfo uriInfo)

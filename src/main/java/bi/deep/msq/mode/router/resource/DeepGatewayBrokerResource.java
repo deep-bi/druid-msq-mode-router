@@ -56,7 +56,7 @@ import org.apache.druid.server.security.ForbiddenException;
 import org.apache.druid.timeline.VersionedIntervalTimeline;
 
 @LazySingleton
-@Path(ApiPaths.BASE)
+@Path(ApiPaths.ROUTER_V2)
 public class DeepGatewayBrokerResource {
 
     private static final Logger LOGGER = new Logger(DeepGatewayBrokerResource.class);
@@ -87,7 +87,6 @@ public class DeepGatewayBrokerResource {
     }
 
     @POST
-    @Path(ApiPaths.DRUID_V2)
     @Produces(MediaType.APPLICATION_JSON)
     @Consumes(MediaType.APPLICATION_JSON)
     public Response postQuery(
