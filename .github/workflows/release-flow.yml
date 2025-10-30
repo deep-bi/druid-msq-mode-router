@@ -65,7 +65,7 @@ jobs:
         id: create-druid-msq-mode-router-artifact
         run: |
           mvn -f pom.xml clean package -DskipTests
-          mv target/*.tar.gz .
+          mv target/*.jar .
 
       - name: Upload MSQ Mode Router Extension extension release asset
         id: upload-druid-msq-mode-router-extension-release-asset
@@ -74,6 +74,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./druid-msq-mode-router-${{ steps.get-version.outputs.content }}-bin.tar.gz
-          asset_name: druid-msq-mode-router-${{ steps.get-version.outputs.content }}-bin.tar.gz
+          asset_path: ./druid-msq-mode-router-${{ steps.get-version.outputs.content }}.jar
+          asset_name: druid-msq-mode-router-${{ steps.get-version.outputs.content }}.jar
           asset_content_type: application/gzip
