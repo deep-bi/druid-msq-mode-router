@@ -43,7 +43,7 @@ public abstract class BaseQueryExecutor implements QueryExecutor {
         try {
             Query<?> prepared = prepareQuery(query);
 
-            byte[] payload = jsonMapper.writeValueAsBytes(query);
+            byte[] payload = jsonMapper.writeValueAsBytes(prepared);
             Headers headers = Headers.snapshot(req);
             Request request = buildRequest(base, payload, headers);
 

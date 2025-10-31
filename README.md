@@ -8,7 +8,7 @@ Keeps client tooling unchanged while enabling deep-storage querying at scale.
 2. Place the `druid-multi-stage-query-<version>.jar` file into the `{DRUID_HOME}/extensions/druid-multi-stage-query/` directory
 3. Place the `web-console-<version>.jar` file into the `{DRUID_HOME}/lib/` directory, replacing the existing one
 4. Place the `druid-msq-mode-router-<version>.jar` file into the `{DRUID_HOME}/extensions/druid-msq-mode-router/` directory
-5. Add `druid-multi-stage-query` and `druid-msq-mode-router"` to the `druid.extensions.loadlist` in your `common.runtime.properties` file
+5. Add `druid-multi-stage-query` and `druid-msq-mode-router` to the `druid.extensions.loadlist` in your `common.runtime.properties` file
 For more information about how to load an extension, see [Loading extensions](https://druid.apache.org/docs/latest/configuration/extensions#loading-extensions)
 6. Configure MSQ extension as per [MSQ documentation](https://druid.apache.org/docs/latest/querying/query-deep-storage)
 
@@ -16,10 +16,10 @@ For more information about how to load an extension, see [Loading extensions](ht
 
 #### Broker runtime properties:
 
-| Name                                    | Default | Description                                                                                                                             |
-|-----------------------------------------|---------|-----------------------------------------------------------------------------------------------------------------------------------------|
-| `druid.deep.gateway.queryTimeout`       | `PT15M` | Global request timeout, in ISO-8601 format, also caps total MSQ polling time in cold mode and is used for all internal request timeouts |
-| `druid.deep.gateway.pollIntervalMillis` | `10000` | Interval (ms) between MSQ task status polls when executing in a cold mode                                                               |
+| Name                                     | Default | Description                                                                                                                             |
+|------------------------------------------|---------|-----------------------------------------------------------------------------------------------------------------------------------------|
+| `druid.deep.gateway.queryTimeout`        | `PT15M` | Global request timeout, in ISO-8601 format, also caps total MSQ polling time in cold mode and is used for all internal request timeouts |
+| `druid.deep.gateway.pollIntervalSeconds` | `10`    | Interval (seconds) between MSQ task status polls when executing in a cold mode                                                          |
 
 ## Usage
 
