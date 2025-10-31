@@ -31,10 +31,10 @@ To run a query using the Deep MSQ Router, POST your query to the `/druid-ext/que
 * Any required segment missing -> cold (MSQ over deep storage).
 
 By default, all queries are run in synchronous mode. This means that the client waits for the query to complete and receives the full result set in the response.
-When MSQ queries executed synchronously, the query state is polled with configured interval until the query is completed, failed or reached timeout.
+When MSQ queries are executed synchronously, the query state is polled with a configured interval until the query is completed, failed, or reaches a timeout.
 The decorated response is returned to the client.
 
-Multi-stage quries can also be run in asynchronous mode. This will allow the client to submit a query and receive an immediate response containing a query ID.
+Multi-stage queries can also be run in asynchronous mode. This will allow the client to submit a query and receive an immediate response containing a query ID.
 To run a query in asynchronous mode, add `?mode=async` to the request URL.
 
 _Sample request:_
