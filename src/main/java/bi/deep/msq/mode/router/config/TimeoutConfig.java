@@ -21,7 +21,7 @@ import org.joda.time.Duration;
 public class TimeoutConfig {
 
     @JsonProperty
-    private final long pollIntervalSeconds = 10000;
+    private final long pollIntervalSeconds = 10;
 
     @JsonProperty
     private final Duration queryTimeout = Duration.standardMinutes(15);
