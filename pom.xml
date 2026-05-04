@@ -20,9 +20,9 @@
   </organization>
 
   <properties>
-    <java.version>8</java.version>
+    <java.version>11</java.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <druid.version>29.0.1</druid.version>
+    <druid.version>31.0.2</druid.version>
   </properties>
 
   <dependencies>
@@ -73,9 +73,8 @@
         <artifactId>maven-compiler-plugin</artifactId>
         <version>3.14.1</version>
         <configuration>
+          <release>${java.version}</release>
           <compilerArgument>-Xlint:unchecked</compilerArgument>
-          <source>${java.version}</source>
-          <target>${java.version}</target>
         </configuration>
       </plugin>
       <plugin>

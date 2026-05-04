@@ -29,6 +29,7 @@ import java.util.HashMap;
 import java.util.Map;
 import org.apache.druid.java.util.http.client.HttpClient;
 import org.apache.druid.java.util.http.client.Request;
+import org.apache.druid.query.Order;
 import org.apache.druid.query.Query;
 import org.apache.druid.query.scan.ScanQuery;
 
@@ -69,7 +70,7 @@ public class ColdQueryExecutor extends BaseQueryExecutor {
         if (query.getType().equals(GROUP_BY)) {
             return ResultsDecorationStrategy.GROUP_BY;
         } else if (query.getType().equals(SCAN)
-                && !((ScanQuery) query).getTimeOrder().equals(ScanQuery.Order.NONE)) {
+                && !((ScanQuery) query).getTimeOrder().equals(Order.NONE)) {
             return ResultsDecorationStrategy.ORDERED_SCAN;
         }
         return ResultsDecorationStrategy.NONE;
