@@ -11,7 +11,7 @@
 
   <groupId>bi.deep</groupId>
   <artifactId>druid-msq-mode-router</artifactId>
-  <version>SNAPSHOT</version>
+  <version>1</version>
   <name>Druid MSQ Mode Router Extension</name>
   <description>Extension for Apache Druid allowing to automatically route queries to MSQ when targeting cold data</description>
   <organization>
