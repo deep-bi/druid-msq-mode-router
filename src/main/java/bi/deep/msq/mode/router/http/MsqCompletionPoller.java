@@ -17,6 +17,7 @@ package bi.deep.msq.mode.router.http;
 
 import bi.deep.msq.mode.router.execution.ResultsDecorationStrategy;
 import bi.deep.msq.mode.router.util.HttpPollUtil;
+import bi.deep.msq.mode.router.util.HttpPollUtil.StateResult;
 import bi.deep.msq.mode.router.util.PollSchedulerInitializer;
 import bi.deep.msq.mode.router.util.ResultsDecorator;
 import bi.deep.msq.mode.router.util.TimeUtil;
@@ -50,6 +51,28 @@ public class MsqCompletionPoller {
             final ObjectMapper mapper,
             final long deadlineNanos,
             final ResultsDecorationStrategy decorationStrategy) {
+        return waitForCompletion(
+                queryId,
+                headers,
+                http,
+                pollIntervalSeconds,
+                base,
+                mapper,
+                deadlineNanos,
+                decorationStrategy,
+                ApiPaths.MSQ_QUERY);
+    }
+
+    public static Response waitForCompletion(
+            final String queryId,
+            final Headers headers,
+            final HttpClient http,
+            final long pollIntervalSeconds,
+            final java.net.URI base,
+            final ObjectMapper mapper,
+            final long deadlineNanos,
+            final ResultsDecorationStrategy decorationStrategy,
+            final String statementsPath) {
         ScheduledExecutorService scheduler = PollSchedulerInitializer.single("msq-poller-");
         CompletableFuture<Response> done = new CompletableFuture<>();
         AtomicBoolean closed = new AtomicBoolean(false);
@@ -59,7 +82,8 @@ public class MsqCompletionPoller {
             ScheduledFuture<?> timeout = scheduler.schedule(
                     () -> {
                         if (closed.compareAndSet(false, true)) {
-                            done.complete(buildTimeoutCancelResponse(base, queryId, headers, http, mapper));
+                            done.complete(
+                                    buildTimeoutCancelResponse(base, queryId, headers, http, mapper, statementsPath));
                         }
                     },
                     TimeUtil.remainingMillis(deadlineNanos),
@@ -72,20 +96,27 @@ public class MsqCompletionPoller {
                         }
                         try {
                             long perCallMs = Math.min(TimeUtil.remainingMillis(deadlineNanos), pollIntervalMillis);
-                            TaskState taskState =
-                                    HttpPollUtil.fetchState(base, queryId, headers, http, perCallMs, mapper);
-                            if (taskState == TaskState.SUCCESS) {
+                            StateResult stateResult = HttpPollUtil.fetchState(
+                                    base, queryId, headers, http, perCallMs, mapper, statementsPath);
+                            if (stateResult.state == TaskState.SUCCESS) {
                                 byte[] rows = HttpPollUtil.fetchResults(
-                                        base, queryId, headers, http, TimeUtil.remainingMillis(deadlineNanos));
+                                        base,
+                                        queryId,
+                                        headers,
+                                        http,
+                                        TimeUtil.remainingMillis(deadlineNanos),
+                                        statementsPath);
                                 final byte[] decorated = ResultsDecorator.decorate(mapper, rows, decorationStrategy);
                                 final Response response = HttpResponseBuilder.buildResult(decorated);
                                 if (closed.compareAndSet(false, true)) {
                                     done.complete(response);
                                 }
-                            } else if (taskState == TaskState.FAILED) {
+                            } else if (stateResult.state == TaskState.FAILED) {
+                                final String msg = stateResult.errorDetails != null
+                                        ? "MSQ failed: " + stateResult.errorDetails
+                                        : "MSQ failed, check the task logs for details";
                                 if (closed.compareAndSet(false, true)) {
-                                    done.complete(HttpResponseBuilder.buildFailure(
-                                            "MSQ failed, check the task logs for details", 502));
+                                    done.complete(HttpResponseBuilder.buildFailure(msg, 502));
                                 }
                             }
                         } catch (TimeoutException ignore) {
@@ -113,7 +144,7 @@ public class MsqCompletionPoller {
         } catch (ExecutionException e) {
             return HttpResponseBuilder.buildFailure(e.getMessage(), 500);
         } catch (TimeoutException e) { // remainingMillis may throw before scheduling
-            return buildTimeoutCancelResponse(base, queryId, headers, http, mapper);
+            return buildTimeoutCancelResponse(base, queryId, headers, http, mapper, statementsPath);
         } finally {
             scheduler.shutdownNow();
         }
@@ -124,11 +155,12 @@ public class MsqCompletionPoller {
             final String queryId,
             final Headers headers,
             final HttpClient http,
-            final com.fasterxml.jackson.databind.ObjectMapper mapper) {
+            final com.fasterxml.jackson.databind.ObjectMapper mapper,
+            final String statementsPath) {
         LOG.warn("Polling timed out, cancelling query %s", queryId);
         Object cancelBody = null;
         try {
-            final byte[] payload = HttpPollUtil.cancelQuery(base, queryId, headers, http);
+            final byte[] payload = HttpPollUtil.cancelQuery(base, queryId, headers, http, statementsPath);
             if (payload != null && payload.length > 0) {
                 try {
                     cancelBody = mapper.readTree(payload);
