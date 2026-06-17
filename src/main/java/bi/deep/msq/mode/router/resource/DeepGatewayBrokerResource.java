@@ -36,6 +36,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.Consumes;
 import javax.ws.rs.POST;
@@ -65,6 +66,7 @@ import org.apache.druid.timeline.VersionedIntervalTimeline;
 public class DeepGatewayBrokerResource {
 
     private static final Logger LOGGER = new Logger(DeepGatewayBrokerResource.class);
+    private static final Set<String> COLD_ELIGIBLE_TYPES = Set.of(Query.SCAN, Query.GROUP_BY);
     private final DruidNode self;
     private final Authorizer authorizer;
     private final ObjectMapper jsonMapper;
@@ -138,16 +140,13 @@ public class DeepGatewayBrokerResource {
             BaseQuery<?> query = jsonMapper.treeToValue(root, BaseQuery.class);
             ExecutionMode selectedMode;
 
-            if (Query.SEGMENT_METADATA.equals(query.getType())) {
-                LOGGER.info("segmentMetadata query received, routing HOT");
-                selectedMode = ExecutionMode.HOT;
-            } else if (!Query.SCAN.equals(query.getType())) {
-                LOGGER.info("Query type %s not supported by cold mode, routing HOT", query.getType());
-                selectedMode = ExecutionMode.HOT;
-            } else {
+            if (COLD_ELIGIBLE_TYPES.contains(query.getType())) {
                 Optional<VersionedIntervalTimeline<String, ServerSelector>> maybeTimeline =
                         brokerServerView.getTimeline(query.getDataSource().getAnalysis());
                 selectedMode = ExecutionModeSelector.select(query.getIntervals(), maybeTimeline.orElse(null));
+            } else {
+                LOGGER.warn("Query type %s not supported by COLD mode, routing HOT", query.getType());
+                selectedMode = ExecutionMode.HOT;
             }
 
             // Hot queries always use sync mode
@@ -170,9 +169,8 @@ public class DeepGatewayBrokerResource {
     private Response routeSqlQuery(JsonNode root, byte[] body, HttpServletRequest req) throws Exception {
         String sqlText = root.path("query").asText(null);
         if (sqlText != null) {
-            SqlIntervalExtractor.Result extracted = sqlText.contains("__time")
-                    ? SqlIntervalExtractor.extract(sqlText)
-                    : SqlIntervalExtractor.Result.EMPTY;
+            SqlIntervalExtractor.Result extracted = SqlIntervalExtractor.extractWithInterval(sqlText);
+
             if (!extracted.intervals.isEmpty()) {
                 if (extracted.dataSource != null) {
                     Optional<VersionedIntervalTimeline<String, ServerSelector>> maybeTimeline =

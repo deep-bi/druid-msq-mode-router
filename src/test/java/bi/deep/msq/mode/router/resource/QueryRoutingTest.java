@@ -232,7 +232,7 @@ class QueryRoutingTest {
     }
 
     @Test
-    void sqlWithIntervalInTimelineRoutesToHotSqlEndpoint() throws Exception {
+    void sqlWithIntervalInTimelineRoutesToHotSqlEndpoint() {
         when(timeoutConfig.getQueryTimeout()).thenReturn(Duration.standardMinutes(1));
         SqlQueryExecutor sqlExecutor = new SqlQueryExecutor(httpClient);
         SqlColdQueryExecutor sqlColdExecutor = mock(SqlColdQueryExecutor.class);

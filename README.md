@@ -28,9 +28,11 @@ To run a query using the Deep MSQ Router, POST your query to the `/druid-ext/que
 
 #### Supported query types and routing
 
+_Segment timeline: the broker's in-memory index of which segments are loaded on historicals and immediately queryable. If a query's interval falls within it, the query goes HOT; if it extends beyond (or the datasource has no loaded segments), it goes COLD via MSQ over deep storage._
+
 | Query type | Detection | HOT endpoint | COLD endpoint | HOT/COLD decision |
 |---|---|---|---|---|
-| SQL | No `queryType` field in body | `/druid/v2/sql` | `/druid/v2/sql/statements` (MSQ async) | Interval extracted from `WHERE __time` clause; no interval -> always COLD |
+| SQL | No `queryType` field in body | `/druid/v2/sql` | `/druid/v2/sql/statements` (MSQ async) | Interval extracted from `WHERE __time` clause (Segment timeline); no interval -> always COLD |
 | `segmentMetadata` | `queryType == "segmentMetadata"` | `/druid/v2/` (native) | - | Always HOT |
 | `scan` | `queryType == "scan"` | `/druid/v2/` | `/druid/v2/native/statements/` | Segment timeline |
 | `groupBy` | `queryType == "groupBy"` | `/druid/v2/` | `/druid/v2/native/statements/` | Segment timeline |
@@ -84,8 +86,8 @@ _Sample results (native groupBy):_
 
 ## Known Limitations
 * SQL interval extraction does not support subqueries or joins (multiple datasources); these fall back to COLD routing to ensure complete results.
-* SQL cold queries always run synchronously (poll-to-completion). The `?mode=async` parameter has no effect.
-* Native `groupBy` and all other non-`scan` query types (except `segmentMetadata`) are always routed HOT regardless of segment timeline coverage. Cold routing is only applied to `scan` queries.
-* Result decoration (matching native response shape) applies only to groupBy and ordered scan on the SQL cold path. Non-ordered scan returns raw MSQ-collected events.
+* SQL hot queries always run synchronously (poll-to-completion). The `?mode=async` parameter has no effect.
+* Native query types except `scan` and `groupBy`, are always routed HOT regardless of segment timeline coverage.
+* Result decoration (matching native response shape) applies only to groupBy and ordered scan on the Native cold path. Non-ordered scan returns raw MSQ-collected events.
 * Requires the custom MSQ distribution (druid-multi-stage-query).
 * Tested against Druid 31.0.2.

@@ -69,6 +69,7 @@ public class DeepGatewayRouterResource {
 
         JsonNode root = objectMapper.readTree(body);
         Server server;
+
         if (root.has("queryType")) {
             Query<?> query = objectMapper.treeToValue(root, Query.class);
             server = queryHostFinder.pickServer(query);

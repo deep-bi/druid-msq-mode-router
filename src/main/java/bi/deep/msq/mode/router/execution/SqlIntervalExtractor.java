@@ -68,11 +68,11 @@ public class SqlIntervalExtractor {
             .withParserFactory(new DruidSqlParserImplFactory());
 
     /**
-     * Parses {@code sql} once and returns both the datasource and any {@code __time} intervals.
-     * Returns {@link Result#EMPTY} on null input or any parse/walk error.
+     * Parses {@code sql} with {@code __time} once and returns both the datasource and intervals.
+     * Returns {@link Result#EMPTY} on null input or no __time or any parse/walk error.
      */
-    public static Result extract(String sql) {
-        if (sql == null) {
+    public static Result extractWithInterval(String sql) {
+        if (sql == null || !sql.contains("__time")) {
             return Result.EMPTY;
         }
         try {
@@ -166,16 +166,29 @@ public class SqlIntervalExtractor {
                 break;
 
             case GREATER_THAN_OR_EQUAL:
-            case GREATER_THAN:
                 if (collector.lower == null && isTimeColumn(call.operand(0))) {
                     collector.lower = parseLiteral(call.operand(1));
                 }
                 break;
+            case GREATER_THAN:
+                if (collector.lower == null && isTimeColumn(call.operand(0))) {
+                    collector.lower = Optional.ofNullable(parseLiteral(call.operand(1)))
+                            .map(lower -> lower.plusMillis(1))
+                            .orElse(null);
+                }
+                break;
 
-            case LESS_THAN:
             case LESS_THAN_OR_EQUAL:
                 if (collector.upper == null && isTimeColumn(call.operand(0))) {
                     collector.upper = parseLiteral(call.operand(1));
+                }
+                break;
+
+            case LESS_THAN:
+                if (collector.upper == null && isTimeColumn(call.operand(0))) {
+                    collector.upper = Optional.ofNullable(parseLiteral(call.operand(1)))
+                            .map(upper -> upper.minusMillis(1))
+                            .orElse(null);
                 }
                 break;
 

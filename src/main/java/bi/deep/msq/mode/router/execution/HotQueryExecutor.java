@@ -33,7 +33,7 @@ public class HotQueryExecutor extends BaseQueryExecutor {
 
     @Override
     protected Request buildRequest(URI base, byte[] payload, Headers headers) throws IOException {
-        URL url = base.resolve(ApiPaths.DRUID_V2 + "/").toURL();
+        URL url = base.resolve(ApiPaths.DRUID_V2).toURL();
         return HttpRequestFactory.buildInternalPost(url, payload, headers);
     }
 }
