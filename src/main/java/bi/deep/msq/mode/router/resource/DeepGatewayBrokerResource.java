@@ -34,7 +34,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import javax.servlet.http.HttpServletRequest;
@@ -60,7 +59,6 @@ import org.apache.druid.query.TableDataSource;
 import org.apache.druid.server.DruidNode;
 import org.apache.druid.server.security.ForbiddenException;
 import org.apache.druid.timeline.VersionedIntervalTimeline;
-import org.joda.time.Interval;
 
 @LazySingleton
 @Path(ApiPaths.ROUTER_V2)
@@ -138,10 +136,13 @@ public class DeepGatewayBrokerResource {
             }
 
             BaseQuery<?> query = jsonMapper.treeToValue(root, BaseQuery.class);
-
             ExecutionMode selectedMode;
+
             if (Query.SEGMENT_METADATA.equals(query.getType())) {
                 LOGGER.info("segmentMetadata query received, routing HOT");
+                selectedMode = ExecutionMode.HOT;
+            } else if (!Query.SCAN.equals(query.getType())) {
+                LOGGER.info("Query type %s not supported by cold mode, routing HOT", query.getType());
                 selectedMode = ExecutionMode.HOT;
             } else {
                 Optional<VersionedIntervalTimeline<String, ServerSelector>> maybeTimeline =
@@ -149,16 +150,9 @@ public class DeepGatewayBrokerResource {
                 selectedMode = ExecutionModeSelector.select(query.getIntervals(), maybeTimeline.orElse(null));
             }
 
-            if (selectedMode == ExecutionMode.COLD) {
-                // Fall back to the standard broker path so the query reaches Druid rather than producing a 404.
-                LOGGER.warn(
-                        "Native query type '%s' selected COLD but no native MSQ endpoint is available; "
-                                + "falling back to Druid direct (%s)",
-                        query.getType(), ApiPaths.DRUID_V2);
-                selectedMode = ExecutionMode.HOT;
-            }
-
-            SubmissionMode submissionMode = SubmissionMode.SYNC;
+            // Hot queries always use sync mode
+            SubmissionMode submissionMode =
+                    selectedMode == ExecutionMode.COLD ? SubmissionMode.fromString(mode) : SubmissionMode.SYNC;
 
             LOGGER.info("Query received: %s, selected mode: %s", query.getType(), selectedMode);
 
@@ -176,13 +170,15 @@ public class DeepGatewayBrokerResource {
     private Response routeSqlQuery(JsonNode root, byte[] body, HttpServletRequest req) throws Exception {
         String sqlText = root.path("query").asText(null);
         if (sqlText != null) {
-            List<Interval> intervals = SqlIntervalExtractor.extractIntervals(sqlText);
-            if (!intervals.isEmpty()) {
-                String dataSourceName = SqlIntervalExtractor.extractDataSource(sqlText);
-                if (dataSourceName != null) {
+            SqlIntervalExtractor.Result extracted = sqlText.contains("__time")
+                    ? SqlIntervalExtractor.extract(sqlText)
+                    : SqlIntervalExtractor.Result.EMPTY;
+            if (!extracted.intervals.isEmpty()) {
+                if (extracted.dataSource != null) {
                     Optional<VersionedIntervalTimeline<String, ServerSelector>> maybeTimeline =
-                            brokerServerView.getTimeline(new TableDataSource(dataSourceName).getAnalysis());
-                    if (ExecutionModeSelector.select(intervals, maybeTimeline.orElse(null)) == ExecutionMode.HOT) {
+                            brokerServerView.getTimeline(new TableDataSource(extracted.dataSource).getAnalysis());
+                    if (ExecutionModeSelector.select(extracted.intervals, maybeTimeline.orElse(null))
+                            == ExecutionMode.HOT) {
                         LOGGER.info("SQL hot path (interval in timeline), routing to %s", ApiPaths.SQL_QUERY);
                         return sqlQueryExecutor.execute(self.getUriToUse(), body, Headers.snapshot(req), timeoutConfig);
                     }

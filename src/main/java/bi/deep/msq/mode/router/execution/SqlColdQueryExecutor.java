@@ -61,22 +61,14 @@ public class SqlColdQueryExecutor {
 
     private byte[] withAsyncContext(byte[] body) throws IOException {
         ObjectNode root = (ObjectNode) jsonMapper.readTree(body);
-
-        // Return results as JSON objects so callers receive {"col": val} rows
-        if (!root.has("resultFormat")) {
-            root.put("resultFormat", "object");
-        }
-
         ObjectNode context = root.has("context") && root.get("context").isObject()
                 ? (ObjectNode) root.get("context")
                 : jsonMapper.createObjectNode();
+
         if (!context.has("executionMode")) {
             context.put("executionMode", "ASYNC");
         }
-        // MSQ requires at least 2 tasks (1 controller + 1 worker)
-        if (!context.has("maxNumTasks")) {
-            context.put("maxNumTasks", 2);
-        }
+
         root.set("context", context);
         return jsonMapper.writeValueAsBytes(root);
     }

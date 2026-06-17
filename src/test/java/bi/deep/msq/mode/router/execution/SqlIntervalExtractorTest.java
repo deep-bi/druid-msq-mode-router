@@ -19,6 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.Collections;
 import java.util.List;
 import org.joda.time.DateTime;
 import org.joda.time.DateTimeZone;
@@ -31,41 +32,45 @@ class SqlIntervalExtractorTest {
 
     @Test
     void extractsPlainDataSourceName() {
-        assertEquals("wikipedia", SqlIntervalExtractor.extractDataSource("SELECT * FROM wikipedia"));
+        assertEquals("wikipedia", extractDataSource("SELECT * FROM wikipedia"));
     }
 
     @Test
     void extractsQuotedDataSourceName() {
-        assertEquals("my_table", SqlIntervalExtractor.extractDataSource("SELECT * FROM \"my_table\" WHERE x = 1"));
+        assertEquals("my_table", extractDataSource("SELECT * FROM \"my_table\" WHERE x = 1"));
+    }
+
+    @Test
+    void extractsQuotedDataSourceNameWithHyphen() {
+        assertEquals("wikipedia-raw", extractDataSource("SELECT * FROM \"wikipedia-raw\""));
     }
 
     @Test
     void returnsNullWhenNoFromClause() {
-        assertNull(SqlIntervalExtractor.extractDataSource("SELECT 1"));
+        assertNull(extractDataSource("SELECT 1"));
     }
 
     @Test
     void returnsNullForNullInput() {
-        assertNull(SqlIntervalExtractor.extractDataSource(null));
+        assertNull(extractDataSource(null));
     }
 
     // ---- extractIntervals: no interval ----
 
     @Test
     void returnsEmptyListForNoTimeFilter() {
-        assertTrue(SqlIntervalExtractor.extractIntervals("SELECT COUNT(*) FROM wikipedia")
-                .isEmpty());
+        assertTrue(extractIntervals("SELECT COUNT(*) FROM wikipedia").isEmpty());
     }
 
     @Test
     void returnsEmptyListForNullSql() {
-        assertTrue(SqlIntervalExtractor.extractIntervals(null).isEmpty());
+        assertTrue(extractIntervals(null).isEmpty());
     }
 
     @Test
     void returnsEmptyListForMalformedTimestamp() {
-        List<Interval> result = SqlIntervalExtractor.extractIntervals(
-                "SELECT * FROM t WHERE __time >= 'not-a-date' AND __time < 'also-not'");
+        List<Interval> result =
+                extractIntervals("SELECT * FROM t WHERE __time >= 'not-a-date' AND __time < 'also-not'");
         assertTrue(result.isEmpty());
     }
 
@@ -73,22 +78,22 @@ class SqlIntervalExtractorTest {
 
     @Test
     void extractsIntervalFromGteAndLt() {
-        List<Interval> result = SqlIntervalExtractor.extractIntervals(
-                "SELECT * FROM t WHERE __time >= '2025-01-01' AND __time < '2025-04-01'");
+        List<Interval> result =
+                extractIntervals("SELECT * FROM t WHERE __time >= '2025-01-01' AND __time < '2025-04-01'");
         assertEquals(1, result.size());
         assertInterval(result.get(0), 2025, 1, 1, 2025, 4, 1);
     }
 
     @Test
     void extractsIntervalFromGtAndLte() {
-        List<Interval> result = SqlIntervalExtractor.extractIntervals(
-                "SELECT * FROM t WHERE __time > '2024-06-01' AND __time <= '2024-12-31'");
+        List<Interval> result =
+                extractIntervals("SELECT * FROM t WHERE __time > '2024-06-01' AND __time <= '2024-12-31'");
         assertEquals(1, result.size());
     }
 
     @Test
     void extractsIntervalWithTimestampKeyword() {
-        List<Interval> result = SqlIntervalExtractor.extractIntervals(
+        List<Interval> result = extractIntervals(
                 "SELECT * FROM t WHERE __time >= TIMESTAMP '2025-01-01 00:00:00' AND __time < TIMESTAMP '2025-02-01 00:00:00'");
         assertEquals(1, result.size());
         assertInterval(result.get(0), 2025, 1, 1, 2025, 2, 1);
@@ -96,7 +101,7 @@ class SqlIntervalExtractorTest {
 
     @Test
     void extractsIntervalWithSqlStyleSpaceTimestamp() {
-        List<Interval> result = SqlIntervalExtractor.extractIntervals(
+        List<Interval> result = extractIntervals(
                 "SELECT * FROM t WHERE __time >= '2025-03-01 00:00:00' AND __time < '2025-03-15 00:00:00'");
         assertEquals(1, result.size());
         assertInterval(result.get(0), 2025, 3, 1, 2025, 3, 15);
@@ -106,8 +111,7 @@ class SqlIntervalExtractorTest {
 
     @Test
     void extractsIntervalFromBetween() {
-        List<Interval> result = SqlIntervalExtractor.extractIntervals(
-                "SELECT * FROM t WHERE __time BETWEEN '2025-01-01' AND '2025-06-30'");
+        List<Interval> result = extractIntervals("SELECT * FROM t WHERE __time BETWEEN '2025-01-01' AND '2025-06-30'");
         assertEquals(1, result.size());
         assertInterval(result.get(0), 2025, 1, 1, 2025, 6, 30);
     }
@@ -116,26 +120,67 @@ class SqlIntervalExtractorTest {
 
     @Test
     void extractsIntervalFromTimeInInterval() {
-        List<Interval> result = SqlIntervalExtractor.extractIntervals(
-                "SELECT * FROM t WHERE TIME_IN_INTERVAL(__time, '2015-09-12/2015-09-13')");
+        List<Interval> result =
+                extractIntervals("SELECT * FROM t WHERE TIME_IN_INTERVAL(__time, '2015-09-12/2015-09-13')");
         assertEquals(1, result.size());
         assertInterval(result.get(0), 2015, 9, 12, 2015, 9, 13);
     }
 
     @Test
     void extractsIntervalFromTimeInIntervalWithSpaces() {
-        List<Interval> result = SqlIntervalExtractor.extractIntervals(
-                "SELECT * FROM t WHERE TIME_IN_INTERVAL( __time , \"2015-01-01/2016-01-01\" )");
+        List<Interval> result =
+                extractIntervals("SELECT * FROM t WHERE TIME_IN_INTERVAL( __time , \"2015-01-01/2016-01-01\" )");
         assertEquals(1, result.size());
+    }
+
+    // ---- extractIntervals: CTEs (WITH clause) ----
+
+    @Test
+    void extractsIntervalFromCteOuterSelect() {
+        List<Interval> result = extractIntervals("WITH recent AS (SELECT * FROM t) SELECT * FROM recent"
+                + " WHERE __time >= '2025-01-01' AND __time < '2025-04-01'");
+        assertEquals(1, result.size());
+        assertInterval(result.get(0), 2025, 1, 1, 2025, 4, 1);
+    }
+
+    @Test
+    void extractsIntervalFromCteWithOrderBy() {
+        List<Interval> result = extractIntervals("WITH recent AS (SELECT * FROM t) SELECT * FROM recent"
+                + " WHERE __time >= '2025-01-01' AND __time < '2025-04-01' ORDER BY __time DESC");
+        assertEquals(1, result.size());
+        assertInterval(result.get(0), 2025, 1, 1, 2025, 4, 1);
+    }
+
+    @Test
+    void cteDataSourceIsAliasNotUnderlyingTable() {
+        // The outer SELECT references the CTE alias - datasource extraction returns that alias.
+        // getTimeline("recent") will return empty, so routing falls to COLD, which is the safe default.
+        assertEquals(
+                "recent",
+                extractDataSource(
+                        "WITH recent AS (SELECT * FROM wikipedia) SELECT * FROM recent WHERE __time >= '2025-01-01'"));
     }
 
     // ---- edge cases ----
 
     @Test
+    void extractsIntervalFromQueryWithOrderBy() {
+        List<Interval> result = extractIntervals(
+                "SELECT * FROM t WHERE __time >= '2025-01-01' AND __time < '2025-04-01' ORDER BY __time DESC");
+        assertEquals(1, result.size());
+        assertInterval(result.get(0), 2025, 1, 1, 2025, 4, 1);
+    }
+
+    @Test
+    void extractsDataSourceFromQueryWithOrderBy() {
+        assertEquals("wikipedia", extractDataSource("SELECT * FROM wikipedia WHERE x = 1 ORDER BY x"));
+    }
+
+    @Test
     void skipsInvertedInterval() {
         // end < start should be dropped
-        List<Interval> result = SqlIntervalExtractor.extractIntervals(
-                "SELECT * FROM t WHERE __time >= '2025-06-01' AND __time < '2025-01-01'");
+        List<Interval> result =
+                extractIntervals("SELECT * FROM t WHERE __time >= '2025-06-01' AND __time < '2025-01-01'");
         assertTrue(result.isEmpty());
     }
 
@@ -144,5 +189,16 @@ class SqlIntervalExtractorTest {
     private static void assertInterval(Interval iv, int sy, int sm, int sd, int ey, int em, int ed) {
         assertEquals(new DateTime(sy, sm, sd, 0, 0, DateTimeZone.UTC), iv.getStart());
         assertEquals(new DateTime(ey, em, ed, 0, 0, DateTimeZone.UTC), iv.getEnd());
+    }
+
+    private static String extractDataSource(String sql) {
+        return SqlIntervalExtractor.extract(sql).dataSource;
+    }
+
+    private static List<Interval> extractIntervals(String sql) {
+        if (sql == null || !sql.contains("__time")) {
+            return Collections.emptyList();
+        }
+        return SqlIntervalExtractor.extract(sql).intervals;
     }
 }

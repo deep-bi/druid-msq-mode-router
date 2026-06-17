@@ -40,7 +40,7 @@ To run a query using the Deep MSQ Router, POST your query to the `/druid-ext/que
 
 For **native scan/groupBy**: all required segments present in the broker timeline -> HOT; any segment missing -> would be COLD
 
-For **SQL**: the router extracts a time interval from the `WHERE` clause using lightweight regex parsing.
+For **SQL**: the router parses the `WHERE` clause using Calcite's SQL parser (same dialect as Druid's native planner) to extract a time interval.
 Supported patterns:
 - `TIME_IN_INTERVAL(__time, 'start/end')`
 - `__time >= 'X' AND __time < 'Y'` (also `>`, `<=`)
@@ -48,9 +48,6 @@ Supported patterns:
 
 If an interval is found and the datasource can be identified, the interval is checked against the broker timeline: inside -> HOT, outside -> COLD. If no interval is found, or the datasource cannot be extracted, the query defaults to COLD to ensure complete results across all history.
 
-Cold queries run in synchronous mode by default: the client waits for results. The query state is polled at the configured interval until it completes, fails, or times out.
-
-SQL cold queries always run synchronously (poll-to-completion). Native queries are always forwarded to the Druid broker synchronously.
 
 #### SQL sample request
 
@@ -86,10 +83,9 @@ _Sample results (native groupBy):_
 * Cold path with async mode: `{"queryId":"query-135761b6-ce99-4130-8c06-ca850a766669","state":"ACCEPTED","createdAt":"2025-10-24T11:41:44.290Z","schema":{"sum_value":"DOUBLE","rows":"LONG"},"durationMs":-1}`
 
 ## Known Limitations
-* SQL interval extraction uses regex patterns. Complex queries (subqueries, CTEs, multiple datasources) may not be parsed correctly; they fall back to COLD routing to ensure complete results.
+* SQL interval extraction does not support subqueries or joins (multiple datasources); these fall back to COLD routing to ensure complete results.
 * SQL cold queries always run synchronously (poll-to-completion). The `?mode=async` parameter has no effect.
-* Native queries (scan, groupBy, and all other types) are always forwarded to the Druid broker directly (`/druid/v2/`). if timeline indicates COLD would be needed, the query falls back to the broker path.
-* GroupBy queries via the MSQ cold path support only `all` granularity.
+* Native `groupBy` and all other non-`scan` query types (except `segmentMetadata`) are always routed HOT regardless of segment timeline coverage. Cold routing is only applied to `scan` queries.
 * Result decoration (matching native response shape) applies only to groupBy and ordered scan on the SQL cold path. Non-ordered scan returns raw MSQ-collected events.
 * Requires the custom MSQ distribution (druid-multi-stage-query).
 * Tested against Druid 31.0.2.

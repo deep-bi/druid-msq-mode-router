@@ -159,7 +159,6 @@ class QueryRoutingTest {
     @Test
     void unsupportedQueryTypeForColdModeFallsBackToHot() throws Exception {
         ObjectMapper mockMapper = nativeQueryMapper("timeseries");
-        when(brokerServerView.getTimeline(any())).thenReturn(Optional.empty());
         when(queryDispatcher.dispatch(any(), any(), any(), any(), any(), any()))
                 .thenReturn(Response.ok("{}").build());
         SqlQueryExecutor sqlExecutor = new SqlQueryExecutor(httpClient);
@@ -203,7 +202,7 @@ class QueryRoutingTest {
 
         ArgumentCaptor<ExecutionMode> modeCaptor = ArgumentCaptor.forClass(ExecutionMode.class);
         verify(queryDispatcher).dispatch(modeCaptor.capture(), any(), any(), any(), any(), any());
-        assertEquals(ExecutionMode.HOT, modeCaptor.getValue());
+        assertEquals(ExecutionMode.COLD, modeCaptor.getValue());
         assertNull(httpClient.lastPath(), "scan goes through dispatcher, not HTTP client directly");
     }
 
