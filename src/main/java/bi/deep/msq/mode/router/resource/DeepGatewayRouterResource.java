@@ -18,6 +18,7 @@ package bi.deep.msq.mode.router.resource;
 import bi.deep.msq.mode.router.http.ApiPaths;
 import bi.deep.msq.mode.router.http.HttpRequestForwarder;
 import bi.deep.msq.mode.router.security.Authorizer;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
 import java.io.IOException;
@@ -65,8 +66,17 @@ public class DeepGatewayRouterResource {
     public Response postQuery(byte[] body, @Context final HttpServletRequest req, @Context final UriInfo uriInfo)
             throws IOException, ExecutionException, InterruptedException {
         authorizer.authorize(req);
-        Query<?> query = objectMapper.readValue(body, Query.class);
-        Server server = queryHostFinder.pickServer(query);
+
+        JsonNode root = objectMapper.readTree(body);
+        Server server;
+
+        if (root.has("queryType")) {
+            Query<?> query = objectMapper.treeToValue(root, Query.class);
+            server = queryHostFinder.pickServer(query);
+        } else {
+            server = queryHostFinder.pickDefaultServer();
+        }
+
         return HttpRequestForwarder.forward(req, uriInfo, server, body, httpClient);
     }
 }

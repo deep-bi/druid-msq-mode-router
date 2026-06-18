@@ -1,5 +1,6 @@
 # Deep MSQ Mode Router Extension
-Introduces a single native-JSON endpoint that routes each query to the native engine (hot) or MSQ (cold) based on segment timeline coverage of the query’s time range.
+Introduces a single endpoint that routes each query to the correct Druid backend based on query type and segment timeline coverage.
+SQL queries are routed to the native SQL engine or MSQ based on whether the queried time interval is covered by the broker's segment timeline. Native scan and groupBy queries follow the same timeline-based decision. Native segmentMetadata queries always go to the broker. All other native query types are forwarded to the broker directly.
 Keeps client tooling unchanged while enabling deep-storage querying at scale.
 
 ## Installation
@@ -23,21 +24,43 @@ For more information about how to load an extension, see [Loading extensions](ht
 
 ## Usage
 
-To run a query using the Deep MSQ Router, POST your query to the `/druid-ext/query-router/v2` endpoint to one of your Broker nodes or to the Router
+To run a query using the Deep MSQ Router, POST your query to the `/druid-ext/query-router/v2` endpoint on one of your Broker nodes or on the Router.
 
-#### Routing:
+#### Supported query types and routing
 
-* All required segments present -> hot (native engine).
-* Any required segment missing -> cold (MSQ over deep storage).
+_Segment timeline: the broker's in-memory index of which segments are loaded on historicals and immediately queryable. If a query's interval falls within it, the query goes HOT, if it extends beyond (or the datasource has no loaded segments), it goes COLD via MSQ over deep storage._
 
-By default, all queries are run in synchronous mode. This means that the client waits for the query to complete and receives the full result set in the response.
-When MSQ queries are executed synchronously, the query state is polled with a configured interval until the query is completed, failed, or reaches a timeout.
-The decorated response is returned to the client.
+| Query type | Detection | HOT endpoint | COLD endpoint | HOT/COLD decision                                                                            |
+|---|---|---|---|----------------------------------------------------------------------------------------------|
+| SQL | No `queryType` field in body | `/druid/v2/sql` | `/druid/v2/sql/statements` (MSQ async) | Interval extracted from `WHERE __time` clause (Segment timeline), no interval -> always COLD |
+| `segmentMetadata` | `queryType == "segmentMetadata"` | `/druid/v2/` (native) | - | Always HOT                                                                                   |
+| `scan` | `queryType == "scan"` | `/druid/v2/` | `/druid/v2/native/statements/` | Segment timeline                                                                             |
+| `groupBy` | `queryType == "groupBy"` | `/druid/v2/` | `/druid/v2/native/statements/` | Segment timeline                                                                             |
+| Other native types | Any other `queryType` | `/druid/v2/` | Falls back to HOT | Always forwarded to Druid direct                                                             |
 
-Multi-stage queries can also be run in asynchronous mode. This will allow the client to submit a query and receive an immediate response containing a query ID.
-To run a query in asynchronous mode, add `?mode=async` to the request URL.
+#### HOT vs COLD decision
 
-_Sample request:_
+For **native scan/groupBy**: all required segments present in the broker timeline -> HOT, any segment missing -> would be COLD
+
+For **SQL**: the router parses the `WHERE` clause using Calcite's SQL parser (same dialect as Druid's native planner) to extract a time interval.
+Supported patterns:
+- `TIME_IN_INTERVAL(__time, 'start/end')`
+- `__time >= 'X' AND __time < 'Y'` (also `>`, `<=`)
+- `__time BETWEEN 'X' AND 'Y'`
+
+If an interval is found and the datasource can be identified, the interval is checked against the broker timeline: inside -> HOT, outside -> COLD. If no interval is found, or the datasource cannot be extracted, the query defaults to COLD to ensure complete results across all history.
+
+
+#### SQL sample request
+
+```curl
+curl -X POST \
+  https://ROUTER:8888/druid-ext/query-router/v2 \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "SELECT COUNT(*) FROM test WHERE __time >= TIMESTAMP '\''2025-09-20'\'' AND __time < TIMESTAMP '\''2025-10-01'\''"}'
+```
+
+#### Native groupBy sample request
 
 ```curl
 curl -X POST \
@@ -55,15 +78,16 @@ curl -X POST \
     "context": { "timeout": 30000 }
   }'
 ```
-_Sample Results:_
-* Native -> `[{"version":"v1","timestamp":"2025-09-20T00:00:00.000Z","event":{"sum_value":275.0,"rows":11}}]`
-* MSQ -> `[{"version":null,"timestamp":null,"event":{"sum_value":275.0,"rows":11}}]` // note: version and timestamp are null in MSQ results
-* MSQ with async mode enabled -> `{"queryId":"query-135761b6-ce99-4130-8c06-ca850a766669","state":"ACCEPTED","createdAt":"2025-10-24T11:41:44.290Z","schema":{"sum_value":"DOUBLE","rows":"LONG"},"durationMs":-1}` // POST to `https://ROUTER:8888/druid-ext/query-router/v2?mode=async`
 
+_Sample results (native groupBy):_
+* Hot path: `[{"version":"v1","timestamp":"2025-09-20T00:00:00.000Z","event":{"sum_value":275.0,"rows":11}}]`
+* Cold path (MSQ): `[{"version":null,"timestamp":null,"event":{"sum_value":275.0,"rows":11}}]`
+* Cold path with async mode: `{"queryId":"query-135761b6-ce99-4130-8c06-ca850a766669","state":"ACCEPTED","createdAt":"2025-10-24T11:41:44.290Z","schema":{"sum_value":"DOUBLE","rows":"LONG"},"durationMs":-1}`
 
 ## Known Limitations
-* Native query input only (no SQL).
-* Supports scan and groupBy.
-* GroupBy queries support only 'all' granularity.
-* Decoration only for groupBy and ordered scan. Non-ordered scan returns raw MSQ-collected events.
-* Requires the custom MSQ distribution.
+* SQL interval extraction does not support subqueries or joins (multiple datasources), these fall back to COLD routing to ensure complete results.
+* Hot queries always run synchronously (poll-to-completion). The `?mode=async` parameter has no effect.
+* Native query types except `scan` and `groupBy`, are always routed HOT regardless of segment timeline coverage.
+* Result decoration (matching native response shape) applies only to groupBy and ordered scan on the Native cold path. Non-ordered scan returns raw MSQ-collected events.
+* Requires the custom MSQ distribution (druid-multi-stage-query).
+* Tested against Druid 31.0.2.

@@ -23,4 +23,6 @@ public class ApiPaths {
     public static final String ROUTER_V2 = ROUTER_BASE + V2;
     public static final String DRUID_V2 = DRUID_BASE + V2;
     public static final String MSQ_QUERY = DRUID_V2 + "/native/statements";
+    public static final String SQL_QUERY = DRUID_V2 + "/sql";
+    public static final String SQL_MSQ_QUERY = DRUID_V2 + "/sql/statements";
 }
