@@ -22,16 +22,21 @@ import bi.deep.msq.mode.router.execution.ExecutionModeSelector;
 import bi.deep.msq.mode.router.execution.HotQueryExecutor;
 import bi.deep.msq.mode.router.execution.QueryDispatcher;
 import bi.deep.msq.mode.router.execution.QueryExecutor;
+import bi.deep.msq.mode.router.execution.SqlColdQueryExecutor;
+import bi.deep.msq.mode.router.execution.SqlIntervalExtractor;
+import bi.deep.msq.mode.router.execution.SqlQueryExecutor;
 import bi.deep.msq.mode.router.execution.SubmissionMode;
 import bi.deep.msq.mode.router.http.ApiPaths;
+import bi.deep.msq.mode.router.http.Headers;
 import bi.deep.msq.mode.router.http.HttpResponseBuilder;
 import bi.deep.msq.mode.router.security.Authorizer;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.Consumes;
 import javax.ws.rs.POST;
@@ -50,7 +55,8 @@ import org.apache.druid.guice.annotations.Self;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.java.util.http.client.HttpClient;
 import org.apache.druid.query.BaseQuery;
-import org.apache.druid.query.DataSource;
+import org.apache.druid.query.Query;
+import org.apache.druid.query.TableDataSource;
 import org.apache.druid.server.DruidNode;
 import org.apache.druid.server.security.ForbiddenException;
 import org.apache.druid.timeline.VersionedIntervalTimeline;
@@ -60,10 +66,13 @@ import org.apache.druid.timeline.VersionedIntervalTimeline;
 public class DeepGatewayBrokerResource {
 
     private static final Logger LOGGER = new Logger(DeepGatewayBrokerResource.class);
+    private static final Set<String> COLD_ELIGIBLE_TYPES = Set.of(Query.SCAN, Query.GROUP_BY);
     private final DruidNode self;
     private final Authorizer authorizer;
     private final ObjectMapper jsonMapper;
     private final BrokerServerView brokerServerView;
+    private final SqlQueryExecutor sqlQueryExecutor;
+    private final SqlColdQueryExecutor sqlColdQueryExecutor;
     private final QueryDispatcher queryDispatcher;
     private final TimeoutConfig timeoutConfig;
 
@@ -75,15 +84,43 @@ public class DeepGatewayBrokerResource {
             @EscalatedClient HttpClient httpClient,
             BrokerServerView brokerServerView,
             TimeoutConfig timeoutConfig) {
+        this(
+                self,
+                authorizer,
+                jsonMapper,
+                brokerServerView,
+                new SqlQueryExecutor(httpClient),
+                new SqlColdQueryExecutor(jsonMapper, httpClient),
+                buildDispatcher(jsonMapper, httpClient),
+                timeoutConfig);
+    }
+
+    // Visible for testing
+    DeepGatewayBrokerResource(
+            DruidNode self,
+            Authorizer authorizer,
+            ObjectMapper jsonMapper,
+            BrokerServerView brokerServerView,
+            SqlQueryExecutor sqlQueryExecutor,
+            SqlColdQueryExecutor sqlColdQueryExecutor,
+            QueryDispatcher queryDispatcher,
+            TimeoutConfig timeoutConfig) {
         this.self = self;
         this.authorizer = authorizer;
         this.jsonMapper = jsonMapper;
         this.brokerServerView = brokerServerView;
-        Map<ExecutionMode, QueryExecutor> executors = new HashMap<>();
-        executors.put(ExecutionMode.HOT, new HotQueryExecutor(jsonMapper, httpClient));
-        executors.put(ExecutionMode.COLD, new ColdQueryExecutor(jsonMapper, httpClient));
-        this.queryDispatcher = new QueryDispatcher(executors);
+        this.sqlQueryExecutor = sqlQueryExecutor;
+        this.sqlColdQueryExecutor = sqlColdQueryExecutor;
+        this.queryDispatcher = queryDispatcher;
         this.timeoutConfig = timeoutConfig;
+    }
+
+    private static QueryDispatcher buildDispatcher(ObjectMapper jsonMapper, HttpClient httpClient) {
+        Map<ExecutionMode, QueryExecutor> executors = Map.of(
+                ExecutionMode.HOT, new HotQueryExecutor(jsonMapper, httpClient),
+                ExecutionMode.COLD, new ColdQueryExecutor(jsonMapper, httpClient));
+
+        return new QueryDispatcher(executors);
     }
 
     @POST
@@ -94,13 +131,23 @@ public class DeepGatewayBrokerResource {
         try {
             authorizer.authorize(req);
 
-            BaseQuery<?> query = jsonMapper.readValue(body, BaseQuery.class);
+            JsonNode root = jsonMapper.readTree(body);
 
-            DataSource dataSource = query.getDataSource();
-            Optional<VersionedIntervalTimeline<String, ServerSelector>> maybeTimeline =
-                    brokerServerView.getTimeline(dataSource.getAnalysis());
+            if (!root.has("queryType")) {
+                return routeSqlQuery(root, body, req);
+            }
 
-            ExecutionMode selectedMode = ExecutionModeSelector.select(query.getIntervals(), maybeTimeline.orElse(null));
+            BaseQuery<?> query = jsonMapper.treeToValue(root, BaseQuery.class);
+            ExecutionMode selectedMode;
+
+            if (COLD_ELIGIBLE_TYPES.contains(query.getType())) {
+                Optional<VersionedIntervalTimeline<String, ServerSelector>> maybeTimeline =
+                        brokerServerView.getTimeline(query.getDataSource().getAnalysis());
+                selectedMode = ExecutionModeSelector.select(query.getIntervals(), maybeTimeline.orElse(null));
+            } else {
+                LOGGER.warn("Query type %s not supported by COLD mode, routing HOT", query.getType());
+                selectedMode = ExecutionMode.HOT;
+            }
 
             // Hot queries always use sync mode
             SubmissionMode submissionMode =
@@ -117,5 +164,32 @@ public class DeepGatewayBrokerResource {
         } catch (Exception ex) {
             return HttpResponseBuilder.buildFailure(ex.getMessage(), 500);
         }
+    }
+
+    private Response routeSqlQuery(JsonNode root, byte[] body, HttpServletRequest req) throws Exception {
+        String sqlText = root.path("query").asText(null);
+        if (sqlText != null) {
+            SqlIntervalExtractor.Result extracted = SqlIntervalExtractor.extractWithInterval(sqlText);
+
+            if (!extracted.intervals.isEmpty()) {
+                if (extracted.dataSource != null) {
+                    Optional<VersionedIntervalTimeline<String, ServerSelector>> maybeTimeline =
+                            brokerServerView.getTimeline(new TableDataSource(extracted.dataSource).getAnalysis());
+                    if (ExecutionModeSelector.select(extracted.intervals, maybeTimeline.orElse(null))
+                            == ExecutionMode.HOT) {
+                        LOGGER.info("SQL hot path (interval in timeline), routing to %s", ApiPaths.SQL_QUERY);
+                        return sqlQueryExecutor.execute(self.getUriToUse(), body, Headers.snapshot(req), timeoutConfig);
+                    }
+                }
+                // Interval present but outside timeline, or datasource unextractable → COLD
+                LOGGER.info("SQL cold path (interval outside timeline), routing to %s", ApiPaths.SQL_MSQ_QUERY);
+            } else {
+                // No time filter → query wants all history, must include cold storage
+                LOGGER.info("SQL cold path (no time filter), routing to %s", ApiPaths.SQL_MSQ_QUERY);
+            }
+        } else {
+            LOGGER.info("SQL cold path (no query text), routing to %s", ApiPaths.SQL_MSQ_QUERY);
+        }
+        return sqlColdQueryExecutor.execute(self.getUriToUse(), body, Headers.snapshot(req), timeoutConfig);
     }
 }

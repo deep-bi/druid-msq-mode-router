@@ -41,7 +41,7 @@ public class ColdQueryExecutor extends BaseQueryExecutor {
 
     @Override
     protected Request buildRequest(URI base, byte[] payload, Headers headers) throws IOException {
-        URL url = base.resolve(ApiPaths.MSQ_QUERY + "/").toURL();
+        URL url = base.resolve(ApiPaths.MSQ_QUERY).toURL();
         return HttpRequestFactory.buildInternalPost(url, payload, headers);
     }
 

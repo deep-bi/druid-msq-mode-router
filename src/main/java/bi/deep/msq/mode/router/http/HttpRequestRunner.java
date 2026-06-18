@@ -60,6 +60,19 @@ public class HttpRequestRunner {
             final URI base,
             final ObjectMapper objectMapper,
             final ResultsDecorationStrategy decorationStrategy) {
+        return runAndPoll(
+                submit, headers, httpClient, config, base, objectMapper, decorationStrategy, ApiPaths.MSQ_QUERY);
+    }
+
+    public static Response runAndPoll(
+            final Request submit,
+            final Headers headers,
+            final HttpClient httpClient,
+            final TimeoutConfig config,
+            final URI base,
+            final ObjectMapper objectMapper,
+            final ResultsDecorationStrategy decorationStrategy,
+            final String statementsPath) {
         final long deadlineNanos = TimeUtil.deadlineNs(config.getQueryTimeout());
         final String queryId;
         try {
@@ -82,7 +95,8 @@ public class HttpRequestRunner {
                 base,
                 objectMapper,
                 deadlineNanos,
-                decorationStrategy);
+                decorationStrategy,
+                statementsPath);
     }
 
     public static String submitMsq(

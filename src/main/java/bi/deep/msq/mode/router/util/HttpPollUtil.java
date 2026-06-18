@@ -15,9 +15,9 @@
  */
 package bi.deep.msq.mode.router.util;
 
-import bi.deep.msq.mode.router.http.ApiPaths;
 import bi.deep.msq.mode.router.http.Headers;
 import bi.deep.msq.mode.router.http.HttpRequestFactory;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.net.URI;
@@ -25,6 +25,7 @@ import java.net.URL;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import javax.annotation.Nullable;
 import org.apache.druid.indexer.TaskState;
 import org.apache.druid.java.util.http.client.HttpClient;
 import org.apache.druid.java.util.http.client.Request;
@@ -33,43 +34,81 @@ import org.apache.druid.java.util.http.client.response.BytesFullResponseHolder;
 
 public class HttpPollUtil {
 
-    public static TaskState fetchState(
+    public static final class StateResult {
+        public final TaskState state;
+
+        @Nullable
+        public final String errorDetails;
+
+        StateResult(TaskState state, @Nullable String errorDetails) {
+            this.state = state;
+            this.errorDetails = errorDetails;
+        }
+    }
+
+    public static StateResult fetchState(
             final URI base,
             final String qid,
             final Headers headers,
             final HttpClient http,
             final long timeoutMs,
-            final ObjectMapper mapper)
+            final ObjectMapper mapper,
+            final String statementsPath)
             throws ExecutionException, InterruptedException, IOException, TimeoutException {
-        URL url = base.resolve(ApiPaths.MSQ_QUERY + "/" + qid).toURL();
+        URL url = base.resolve(statementsPath + "/" + qid).toURL();
         Request get = HttpRequestFactory.buildInternalGet(url, headers);
         BytesFullResponseHolder h = http.go(get, new BytesFullResponseHandler()).get(timeoutMs, TimeUnit.MILLISECONDS);
 
         if (h == null || h.getStatus().getCode() >= 300) {
-            return TaskState.RUNNING;
+            return new StateResult(TaskState.RUNNING, null);
         }
 
         String state = JsonUtil.jsonStringField(mapper, h.getContent(), "state");
         if (state == null) {
-            return TaskState.RUNNING;
+            return new StateResult(TaskState.RUNNING, null);
         }
 
         switch (state) {
             case "SUCCESS":
-                return TaskState.SUCCESS;
+                return new StateResult(TaskState.SUCCESS, null);
             case "FAILED":
             case "CANCELED":
             case "CANCELLED":
-                return TaskState.FAILED;
+                return new StateResult(TaskState.FAILED, extractErrorDetails(mapper, h.getContent()));
             default:
-                return TaskState.RUNNING;
+                return new StateResult(TaskState.RUNNING, null);
         }
     }
 
+    @Nullable
+    private static String extractErrorDetails(ObjectMapper mapper, byte[] content) {
+        try {
+            JsonNode root = mapper.readTree(content);
+            // Native MSQ: errorReport.error.errorMessage
+            JsonNode native_ = root.path("errorReport").path("error").path("errorMessage");
+            if (!native_.isMissingNode() && !native_.isNull()) {
+                return native_.asText();
+            }
+            // SQL MSQ: errorDetails.errorMessage
+            JsonNode sql = root.path("errorDetails").path("errorMessage");
+            if (!sql.isMissingNode() && !sql.isNull()) {
+                return sql.asText();
+            }
+        } catch (Exception ignored) {
+            // malformed body: fall through to null
+        }
+        return null;
+    }
+
     public static byte[] fetchResults(
-            final URI base, final String qid, final Headers headers, final HttpClient http, final long timeoutMs)
+            final URI base,
+            final String qid,
+            final Headers headers,
+            final HttpClient http,
+            final long timeoutMs,
+            final String statementsPath)
             throws ExecutionException, InterruptedException, IOException, TimeoutException {
-        URL url = base.resolve(ApiPaths.MSQ_QUERY + "/" + qid + "/results").toURL();
+        URL url = base.resolve(statementsPath + "/" + qid + "/results").toURL();
         Request get = HttpRequestFactory.buildInternalGet(url, headers);
         BytesFullResponseHolder h = http.go(get, new BytesFullResponseHandler()).get(timeoutMs, TimeUnit.MILLISECONDS);
 
@@ -82,9 +121,10 @@ public class HttpPollUtil {
         return h.getContent();
     }
 
-    public static byte[] cancelQuery(final URI base, final String qid, final Headers headers, final HttpClient http)
+    public static byte[] cancelQuery(
+            final URI base, final String qid, final Headers headers, final HttpClient http, final String statementsPath)
             throws ExecutionException, InterruptedException, IOException, TimeoutException {
-        URL url = base.resolve(ApiPaths.MSQ_QUERY + "/" + qid).toURL();
+        URL url = base.resolve(statementsPath + "/" + qid).toURL();
         Request delete = HttpRequestFactory.buildInternalDelete(url, headers);
         BytesFullResponseHolder h =
                 http.go(delete, new BytesFullResponseHandler()).get(5000, TimeUnit.MILLISECONDS);

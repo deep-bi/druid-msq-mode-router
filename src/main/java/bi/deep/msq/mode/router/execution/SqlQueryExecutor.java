@@ -15,25 +15,29 @@
  */
 package bi.deep.msq.mode.router.execution;
 
+import bi.deep.msq.mode.router.config.TimeoutConfig;
 import bi.deep.msq.mode.router.http.ApiPaths;
 import bi.deep.msq.mode.router.http.Headers;
 import bi.deep.msq.mode.router.http.HttpRequestFactory;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import bi.deep.msq.mode.router.http.HttpRequestRunner;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URL;
+import javax.ws.rs.core.Response;
 import org.apache.druid.java.util.http.client.HttpClient;
 import org.apache.druid.java.util.http.client.Request;
 
-public class HotQueryExecutor extends BaseQueryExecutor {
+public class SqlQueryExecutor {
 
-    public HotQueryExecutor(ObjectMapper jsonMapper, HttpClient httpClient) {
-        super(jsonMapper, httpClient);
+    private final HttpClient httpClient;
+
+    public SqlQueryExecutor(HttpClient httpClient) {
+        this.httpClient = httpClient;
     }
 
-    @Override
-    protected Request buildRequest(URI base, byte[] payload, Headers headers) throws IOException {
-        URL url = base.resolve(ApiPaths.DRUID_V2).toURL();
-        return HttpRequestFactory.buildInternalPost(url, payload, headers);
+    public Response execute(URI base, byte[] body, Headers headers, TimeoutConfig config) throws IOException {
+        URL url = base.resolve(ApiPaths.SQL_QUERY).toURL();
+        Request request = HttpRequestFactory.buildInternalPost(url, body, headers);
+        return HttpRequestRunner.runRequest(request, config, httpClient);
     }
 }
